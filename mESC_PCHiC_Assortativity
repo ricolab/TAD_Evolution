@@ -1,6 +1,8 @@
 #packages ----
 library("igraph")
-library("GenomicRanges")
+library(GenomeInfoDb)
+library(GenomeInfoDbData)
+library(GenomicRanges)
 library("tidyverse")
 library("data.table")
 library(sqldf)
@@ -8,6 +10,8 @@ library(plyr)
 library(dplyr)
 library(RColorBrewer)
 library(VertexSort)
+library(biomaRt)
+library(ggplot2)
 
 #functions ----
 overlap.genes <- function(Ages,DATA){
@@ -330,21 +334,23 @@ tad.assortativity <- function(DATA,DATAFRAGS,FILENAME,CELLTYPE){
 #files -----
 setwd("E:/")
 
-path = "/Caelinn_work/Assortativity/mESC_PCHiC"
+path = "/PAPER_FINAL_CODE/Assortativity_FINAL/mESC_PCHiC"
+#Interaction MAP: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-016-1003-3
 MAP = "/mESC_PCHiC_interaction_map.txt"
-COORDINATEs = "/Coordinates.txt"
 GENEAGE = "/Mice_Ages_v74.txt"
-TADFILE = "/mESC_TADs.xlsx"
+#TAD: https://www.sciencedirect.com/science/article/pii/S0092867417311376 (converted from mm10 to mm9 using http://www.ensembl.org/Homo_sapiens/Tools/AssemblyConverter?db=core)
+TADFILE = "/mESC_TADs_mm9.bed"
 
 Map <- read.table(file = paste0(path,MAP), header = TRUE, sep = "\t")
-
-Coordinates <- read.table(file=paste0(path,COORDINATEs), header = TRUE,sep = "\t",na.strings = "NA")
-colnames(Coordinates) <- c("Ensembl.Gene.ID","Gene_Start_bp","Gene_End_bp","Chromosome","Type","MGI.symbol")
 
 Ages <- read.table(file=paste0(path,GENEAGE), na.strings=c("unclear","NA"))
 colnames(Ages) <- c("Gene",	"Prot",	"FamilyAge",	"GeneAge",	"GeneType")
 
-TADs <- readxl::read_excel(paste0(path,TADFILE))
+genes <- biomaRt::useEnsembl(biomart="ensembl",dataset = "mmusculus_gene_ensembl", version=67)
+Coordinates <- biomaRt::getBM(mart = genes, filters = 'biotype', values = 'protein_coding' ,attributes =c('ensembl_gene_id','start_position','end_position','chromosome_name','mgi_symbol') )
+colnames(Coordinates) <- c("Ensembl.Gene.ID","Gene_Start_bp","Gene_End_bp","Chromosome","MGI.symbol")
+
+TADs <- read.table(paste0(path,TADFILE),header=FALSE)
 
 
 RankOrder <- data.frame(c("FungiMetazoa","Bilateria","Chordata","Euteleostomi","Sarcopterygii","Tetrapoda","Amniota","Mammalia","Theria","Eutheria","Rodent","No Age Provided","Non-genic"))
@@ -355,10 +361,11 @@ save(RankOrder,file=paste0(path,"/RankOrder.rData"))
 
 #Overlapping gene ages and names with fragments ----
 MiceAge <- merge(Ages,Coordinates,by.x="Gene",by.y="Ensembl.Gene.ID", all.y=TRUE)
-MiceAge <- MiceAge[,c("Gene","GeneAge","Gene_Start_bp","Gene_End_bp","Chromosome","Type")]
+MiceAge <- MiceAge[,c("Gene","GeneAge","Gene_Start_bp","Gene_End_bp","Chromosome")]
 MiceAge$GeneAge <- as.character(MiceAge$GeneAge)
-MiceAge <- MiceAge[(which(MiceAge$Type == "protein_coding")),]
 MiceAge[is.na(MiceAge)] <- "No Age Provided"
+chromosomes <- c(1:19,'X')
+MiceAge <- MiceAge[which(MiceAge$Chromosome %in% chromosomes),]
 
 for(i in 1:nrow(MiceAge)){
   if(MiceAge[i,"GeneAge"] == "Fungi-Metazoa_group") {MiceAge[i,"GeneAge"] <- "FungiMetazoa" }
@@ -373,7 +380,9 @@ PCHiC_Ensembl <- overlap.genes(MiceAge,Map)
 PCHiC_Ensembl <- PCHiC_Ensembl[,c("baitID","baitChr","baitStart","baitEnd","bait_Name","bait_Age","oeID","oeChr","oeStart","oeEnd","oe_Name","oe_Age")]
 
 PCHiC_Young_Frags <- young.network.frags(PCHiC_Ensembl)
+save(PCHiC_Young_Frags,file=paste0(path,"/PCHiC_Young_Frags.rData"))
 PCHiC_Young <- young.network(PCHiC_Ensembl,PCHiC_Young_Frags)
+save(PCHiC_Young,file=paste0(path,"/PCHiC_Young.rData"))
 
 rm(MiceAge,Ages,Coordinates,PCHiC_Ensembl,Map,i)
 
@@ -384,22 +393,48 @@ GeneAssortativity <- gene.age.assortativity(PCHiC_Young,PCHiC_Young_Frags,"/mESC
 TADAssortativity <- tad.assortativity(PCHiC_Young,PCHiC_Young_Frags,"/mESC_PCHiC_TAD_Assortativity","mESC PCHi-C")
 
 #Fused TADs
-TADFILE = "/mESCTADs_fused.tsv"
-TADs <- read.delim(paste0(path,TADFILE))
+TADFILE = "/mESC_Fused_TADs_mm9.bed"
+TADs <- read.delim(paste0(path,TADFILE),header=FALSE)
 FusedAssortativity <- tad.assortativity(PCHiC_Young,PCHiC_Young_Frags,"/mESC_PCHiC_Fused_Assortativity","mESC PCHi-C")
-FusedDiff <- data.frame(TADAssortativity[,2],FusedAssortativity[,2],(TADAssortativity[,2] - FusedAssortativity[,2]))
-colnames(FusedDiff) <- c("Normal TADs","Fused TADs","Difference")
-rownames(FusedDiff) <- rownames(TADAssortativity)
 
-#Random TADs
-files = list.files(path = path,pattern="mESCTADs_rnd",recursive=TRUE)
+FusedDiff <- data.frame(TADAssortativity[,2],FusedAssortativity[,2],(TADAssortativity[,2] - FusedAssortativity[,2]))
+colnames(FusedDiff) <- c("Original","Fused","Difference")
+rownames(FusedDiff) <- rownames(TADAssortativity)
+save(FusedDiff,file=paste0(path,"/Fused_TAD_differences.rData"))
+
+#Randomised TADs
+files = list.files(path = path,pattern="mESCTADs_mm9_rnd",recursive=TRUE)
 RandomTADs <- data.frame(matrix(NA,4,length(files)))
 for(i in 1:length(files)){
   TADFILE <-paste0("/",files[i])
   RandomTADs[,i] <-  tad.assortativity(PCHiC_Young,PCHiC_Young_Frags,paste0("/RandomisedTADs/mESC_PCHiC_rand",i,"_TAD_Assortativity"),"mESC PCHi-C randomised")[,2]
     }
+rownames(RandomTADs) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
 save(RandomTADs,file=paste0(path,"/RandomTADs.rData"))
 
 Assort <- data.frame(Original = TADAssortativity[,2],RandomMean = rowMeans(RandomTADs),sd = c(sd(RandomTADs[1,]),sd(RandomTADs[2,]),sd(RandomTADs[3,]),sd(RandomTADs[4,])),Difference= TADAssortativity[,2] -  rowMeans(RandomTADs))
 rownames(Assort) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
 save(Assort,file=paste0(path,"/Random_TAD_differences.rData"))
+
+#Final Graph
+All <- as.data.table(merge(FusedDiff,Assort,by="Original"))
+All <- t(All[,c(1,2,4)])
+colnames(All) <- c("Interchromosomal","Inter-TAD","Full network","Intra-TAD")
+row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)")
+All <- All[,c(3,4,2)]
+
+All <- reshape2::melt(All,id.vars=c("Type"))
+All$sd <- NA
+All[6,"sd"] <- Assort[2,3]
+All[9,"sd"] <- Assort[3,3]
+
+print(allTADs <- ggplot(data=All,aes(y=value,x=Var2,fill=Var1))+
+        geom_bar(stat="identity",position="dodge")+
+        geom_errorbar(aes(ymin=value-sd, ymax=value+sd), width=.5,
+                      position=position_dodge(.9)) +
+        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity Scores for different interaction types (mESC PCHi-C network)
+             when TADs are unchanged, fused, and randomised", fill= "TAD Type") )
+
+pdf(file = paste0(path,"/mESC_PCHiC_All_TAD_Assortativity.pdf"),width=8,height=8)
+allTADs
+dev.off()
