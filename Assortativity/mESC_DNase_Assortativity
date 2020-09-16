@@ -299,7 +299,7 @@ tad.assortativity <- function(DATA,DATAFRAGS,FILENAME,CELLTYPE){
   
   DATA$Interaction <- paste(DATA$baitID, "-",DATA$oeID)
   Intra_TAD <- DATA[which(DATA$bait_TAD == DATA$oe_TAD),]
-  Intra_TAD <- Intra_TAD[-(which(Intra_TAD$bait_TAD == "No TAD")),]
+  if("No TAD" %in% Intra_TAD$bait_TAD){ Intra_TAD <- Intra_TAD[-(which(Intra_TAD$bait_TAD == "No TAD")),]}
   Inter_TAD <- DATA[-(which(DATA$Interaction %in% Intra_TAD$Interaction)),]
   Inter_TAD <- Inter_TAD[(which(Inter_TAD$baitChr == Inter_TAD$oeChr)),]
   InterChromo <- DATA[-which(DATA$baitChr == DATA$oeChr),]
