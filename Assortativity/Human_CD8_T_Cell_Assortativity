@@ -1,0 +1,22 @@
+#Final Graph
+All <- as.data.table(merge(FusedDiff,Assort,by="Original"))
+All <- t(All[,c(1,2,4)])
+colnames(All) <- c("Interchromosomal","Inter-TAD","Full network","Intra-TAD")
+row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)")
+All <- All[,c(3,4,2)]
+
+All <- reshape2::melt(All,id.vars=c("Type"))
+All$sd <- NA
+All[6,"sd"] <- Assort[2,3]
+All[9,"sd"] <- Assort[3,3]
+
+print(allTADs <- ggplot(data=All,aes(y=value,x=Var2,fill=Var1))+
+        geom_bar(stat="identity",position="dodge")+
+        geom_errorbar(aes(ymin=value-sd, ymax=value+sd), width=.5,
+                      position=position_dodge(.9)) +
+        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity Scores for different interaction types (human naive CD8+ T cell network)
+             when TADs are unchanged, fused, and randomised", fill= "TAD Type") )
+
+pdf(file = paste0(path,"/CD8_All_TAD_Assortativity.pdf"),width=8,height=8)
+allTADs
+dev.off()
