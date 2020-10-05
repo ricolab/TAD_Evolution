@@ -1,3 +1,7 @@
+################################
+##### 2020-04-27
+################################
+
 # this function is similar to fillTableWithGeneTypes
 # which can be found at: /home/marco/Dropbox/labejo/taskoj/2019/2019-05-23 BioMart with R/comandos.txt
 # input myTADs have four columns:
