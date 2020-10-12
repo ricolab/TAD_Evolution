@@ -65,7 +65,7 @@ overlap.genes <- function(Ages,DATA){
   
   oldw <- getOption("warn")
   options(warn = -1)
-  if(!Ages$Chromosome %like% "chr"){Ages$Chromosome <- paste0("chr",Ages$Chromosome)}
+  if(!DATA$oeChr %like% "chr"){DATA$oeChr <- paste0("chr",DATA$oeChr)}
   options(warn = oldw)
   oeDATAGRange <- makeGRangesFromDataFrame(DATA,
                                            keep.extra.columns=T,
