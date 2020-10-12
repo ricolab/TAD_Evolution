@@ -65,7 +65,7 @@ overlap.genes <- function(Ages,DATA){
   
   oldw <- getOption("warn")
   options(warn = -1)
-   if(!DATA$oeChr %like% "chr"){DATA$oeChr <- paste0("chr",DATA$oeChr)}
+  if(!DATA$oeChr %like% "chr"){DATA$oeChr <- paste0("chr",DATA$oeChr)}
   options(warn = oldw)
   oeDATAGRange <- makeGRangesFromDataFrame(DATA,
                                            keep.extra.columns=T,
@@ -299,7 +299,7 @@ tad.assortativity <- function(DATA,DATAFRAGS,FILENAME,CELLTYPE){
   
   DATA$Interaction <- paste(DATA$baitID, "-",DATA$oeID)
   Intra_TAD <- DATA[which(DATA$bait_TAD == DATA$oe_TAD),]
-  if("No TAD" %in% Intra_TAD$bait_TAD){ Intra_TAD <- Intra_TAD[-(which(Intra_TAD$bait_TAD == "No TAD")),]}
+  Intra_TAD <- Intra_TAD[-(which(Intra_TAD$bait_TAD == "No TAD")),]
   Inter_TAD <- DATA[-(which(DATA$Interaction %in% Intra_TAD$Interaction)),]
   Inter_TAD <- Inter_TAD[(which(Inter_TAD$baitChr == Inter_TAD$oeChr)),]
   InterChromo <- DATA[-which(DATA$baitChr == DATA$oeChr),]
@@ -408,7 +408,7 @@ save(DNase_Young_Frags,file=paste0(path,"/DNase_Young_Frags.rData"))
 DNase_Young <- young.network(DNase_Ensembl,DNase_Young_Frags)
 save(DNase_Young,file=paste0(path,"/DNase_Young.rData"))
 
-rm(MiceAge,Ages,Coordinates,DNase_Ensembl,Map,i)
+rm(MiceAge,Ages,Coordinates,DNase_Ensembl,i)
 
 #Assortativity time -----
 
@@ -416,7 +416,7 @@ GeneAssortativity <- gene.age.assortativity(DNase_Young,DNase_Young_Frags,"/mESC
 
 TADAssortativity <- tad.assortativity(DNase_Young,DNase_Young_Frags,"/mESC_DNase_TAD_Assortativity","mESC DNaseI")
 
-#Fused TADs
+#Fused TADs ----
 TADFILE = "/mESC_Fused_TADs_mm9.bed"
 TADs <- read.delim(paste0(path,TADFILE),header=FALSE)
 FusedAssortativity <- tad.assortativity(DNase_Young,DNase_Young_Frags,"/mESC_DNase_Fused_Assortativity","mESC DNaseI")
@@ -427,7 +427,7 @@ rownames(FusedDiff) <- rownames(TADAssortativity)
 save(FusedDiff,file=paste0(path,"/Fused_TAD_differences.rData"))
 
 
-#Randomised TADs
+#Randomised TADs ----
 files = list.files(path = path,pattern="mESCTADs_mm9_rnd",recursive=TRUE)
 RandomTADs <- data.frame(matrix(NA,4,length(files)))
 for(i in 1:length(files)){
@@ -441,25 +441,73 @@ Assort <- data.frame(Original = TADAssortativity[,2],RandomMean = rowMeans(Rando
 rownames(Assort) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
 save(Assort,file=paste0(path,"/Random_TAD_differences.rData"))
 
-#Final Graph
-All <- as.data.table(merge(FusedDiff,Assort,by="Original"))
-All <- t(All[,c(1,2,4)])
-colnames(All) <- c("Interchromosomal","Inter-TAD","Full network","Intra-TAD")
-row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)")
-All <- All[,c(3,4,2)]
+#Randomised Ages ----
+files = list.files(path = path,pattern="MiceAges.txt_rnd",recursive=TRUE)
+RandomAges <- data.frame(matrix(NA,4,length(files)))
+TADFILE = "/mESC_TADs_mm9.bed"  
+TADs <- read.table(paste0(path,TADFILE),header=FALSE)
+
+genes <- biomaRt::useEnsembl(biomart="ensembl",dataset = "mmusculus_gene_ensembl", version=67)
+Coordinates <- biomaRt::getBM(mart = genes, filters = 'biotype', values = 'protein_coding' ,attributes =c('ensembl_gene_id','start_position','end_position','chromosome_name','mgi_symbol') )
+colnames(Coordinates) <- c("Ensembl.Gene.ID","Gene_Start_bp","Gene_End_bp","Chromosome","MGI.symbol")
+
+for(i in 1:length(files)){
+  Ages <- read.table(file=paste0(path,"/",files[i]), na.strings=c("unclear","NA"),header=T)
+  colnames(Ages) <- c("Gene",	"Prot",	"FamilyAge",	"GeneAge",	"GeneType")
+  
+  MiceAge <- merge(Ages,Coordinates,by.x="Gene",by.y="Ensembl.Gene.ID", all.y=TRUE)
+  MiceAge <- MiceAge[,c("Gene","GeneAge","Gene_Start_bp","Gene_End_bp","Chromosome")]
+  MiceAge$GeneAge <- as.character(MiceAge$GeneAge)
+  MiceAge[is.na(MiceAge)] <- "No Age Provided"
+  chromosomes <- c(1:19,'X')
+  MiceAge <- MiceAge[which(MiceAge$Chromosome %in% chromosomes),]
+  
+  for(j in 1:nrow(MiceAge)){
+    if(MiceAge[j,"GeneAge"] == "Fungi-Metazoa_group") {MiceAge[j,"GeneAge"] <- "FungiMetazoa" }
+    if(MiceAge[j,"GeneAge"] == "Glires") {MiceAge[j,"GeneAge"] <- "Rodent" }
+    if(MiceAge[j,"GeneAge"] == "Rodentia") {MiceAge[j,"GeneAge"] <- "Rodent" }
+    if(MiceAge[j,"GeneAge"] == "Sciurognathi") {MiceAge[j,"GeneAge"] <- "Rodent" }
+    if(MiceAge[j,"GeneAge"] == "Murinae") {MiceAge[j,"GeneAge"] <- "Rodent" }
+    if(MiceAge[j,"GeneAge"] == "Mus.musculus") {MiceAge[j,"GeneAge"] <- "Rodent" }
+  }
+  
+  DNAse_Ensembl <- overlap.genes(MiceAge,Map)
+  DNAse_Ensembl <- DNAse_Ensembl[,c("baitID","baitChr","baitStart","baitEnd","bait_Name","bait_Age","oeID","oeChr","oeStart","oeEnd","oe_Name","oe_Age")]
+  
+  DNAse_Young_Frags <- young.network.frags(DNAse_Ensembl)
+  DNAse_Young <- young.network(DNAse_Ensembl,DNAse_Young_Frags)
+  
+  RandomAges[,i] <-  tad.assortativity(DNAse_Young,DNAse_Young_Frags,paste0("/RandomAges/mESC_DNAse_Agerand",i,"_TAD_Assortativity"),"mESC DNAse I randomised")[,2]
+}
+rownames(RandomAges) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+save(RandomAges,file=paste0(path,"/RandomAges.rData"))
+
+AssortAges <- data.frame(Original = TADAssortativity[,2],AgeMean = rowMeans(RandomAges),Agesd = c(sd(RandomAges[1,]),sd(RandomAges[2,]),sd(RandomAges[3,]),sd(RandomAges[4,])),AgeDifference= TADAssortativity[,2] -  rowMeans(RandomAges))
+rownames(AssortAges) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+save(AssortAges,file=paste0(path,"/Random_Ages_differences.rData"))
+
+
+#Final Graph ----
+All <- as.data.table(cbind(FusedDiff,Assort[,-1],AssortAges[,-1]))
+All <- t(All[,c(1,2,4,7)])
+colnames(All) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)","Randomised ages (mean)")
+All <- All[,c(1:3)]
 
 All <- reshape2::melt(All,id.vars=c("Type"))
 All$sd <- NA
-All[6,"sd"] <- Assort[2,3]
-All[9,"sd"] <- Assort[3,3]
+All[7,"sd"] <- Assort[2,3]
+All[11,"sd"] <- Assort[3,3]
+All[4,"sd"] <- AssortAges[1,3]
+All[8,"sd"] <- AssortAges[2,3]
+All[12,"sd"] <- AssortAges[3,3]
 
 print(allTADs <- ggplot(data=All,aes(y=value,x=Var2,fill=Var1))+
         geom_bar(stat="identity",position="dodge")+
         geom_errorbar(aes(ymin=value-sd, ymax=value+sd), width=.5,
                       position=position_dodge(.9)) +
-        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity Scores for different interaction types (mESC DNase I network)
-             when TADs are unchanged, fused, and randomised", fill= "TAD Type") )
+        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity scores for different interaction types in the mESC DNAse I network", fill= "TAD Type") )
 
-pdf(file = paste0(path,"/mESC_DNase_All_TAD_Assortativity.pdf"),width=8,height=8)
+pdf(file = paste0(path,"/mESC_DNAse_All_TAD_Assortativity.pdf"),width=8,height=8)
 allTADs
 dev.off()
