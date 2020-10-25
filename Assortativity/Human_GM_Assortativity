@@ -389,7 +389,7 @@ GM_Young_Frags <- young.network.frags(GM_Ensembl)
 GM_Young <- young.network(GM_Ensembl,GM_Young_Frags)
 save(GM_Young,file=paste0(path,"/GM_Young.rData"))
 save(GM_Young_Frags,file=paste0(path,"/GM_Young_Frags.rData"))
-rm(Ages,GM_Ensembl,Map,i)
+rm(Ages,GM_Ensembl,i)
 
 #Assortativity time -----
 
@@ -397,7 +397,7 @@ GeneAssortativity <- gene.age.assortativity(GM_Young,GM_Young_Frags,"/GM_Gene_As
 
 TADAssortativity <- tad.assortativity(GM_Young,GM_Young_Frags,"/GM_TAD_Assortativity","GM cell line")
 
-#Fused TADs
+#Fused TADs ----
 TADFILE = "/GSE63525_GM12878_primary+replicate_Arrowhead_domainlist_sorted_noNested_fused.tsv"
 TADs <- read.delim(paste0(path,TADFILE))
 FusedAssortativity <- tad.assortativity(GM_Young,GM_Young_Frags,"/GM_Fused_Assortativity","GM cell line Fused")
@@ -407,12 +407,12 @@ colnames(FusedDiff) <- c("Original","Fused","Difference")
 rownames(FusedDiff) <- rownames(TADAssortativity)
 save(FusedDiff,file=paste0(path,"/Fused_TAD_differences.rData"))
 
-#Random TADs
+#Random TADs ----
 files = list.files(path = path,pattern="replicate_Arrowhead_domainlist_sorted_noNested_rnd",recursive=TRUE)
 RandomTADs <- data.frame(matrix(NA,4,length(files)))
 for(i in 1:length(files)){
   TADFILE <-paste0("/",files[i])
-  RandomTADs[,i] <-  tad.assortativity(GM_Young,GM_Young_Frags,paste0("/RandomTADs/GM_rand",i,"_TAD_Assortativity"),"naive CD8+ T cell randomised")[,2]
+  RandomTADs[,i] <-  tad.assortativity(GM_Young,GM_Young_Frags,paste0("/RandomTADs/GM_rand",i,"_TAD_Assortativity"),"Human GM cell line randomised")[,2]
 }
 save(RandomTADs,file=paste0(path,"/RandomTADs.rData"))
 rowMeans(RandomTADs)
@@ -421,24 +421,72 @@ Assort <- data.frame(Original = TADAssortativity[,2],RandomMean = rowMeans(Rando
 rownames(Assort) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
 save(Assort,file=paste0(path,"/Random_TAD_differences.rData"))
 
-#Final Graph
-All <- as.data.table(merge(FusedDiff,Assort,by="Original"))
-All <- t(All[,c(1,2,4)])
-colnames(All) <- c("Interchromosomal","Inter-TAD","Full network","Intra-TAD")
-row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)")
-All <- All[,c(3,4,2)]
+#Randomised Ages ----
+files = list.files(path = path,pattern="HumanAges_v75.csv_rnd",recursive=TRUE)
+RandomAges <- data.frame(matrix(NA,4,length(files)))
+TADFILE = "/GSE63525_GM12878_primary+replicate_Arrowhead_domainlist_sorted_noNested.txt"
+TADs <- as.data.frame(read.delim(paste0(path,TADFILE),header=T))
+
+genes <- biomaRt::useEnsembl(biomart="ensembl",dataset = "hsapiens_gene_ensembl", version=75)
+Coordinates <- biomaRt::getBM(mart = genes, filters = 'biotype', values = 'protein_coding' ,attributes =c('ensembl_gene_id','start_position','end_position','chromosome_name','hgnc_symbol') )
+colnames(Coordinates) <- c("Gene","Gene_Start_bp","Gene_End_bp","Chromosome","Symbol")
+
+for(i in 1:length(files)){
+  Ages <- read.table(file=paste0(path,"/",files[i]), na.strings=c("unclear","NA"),header=T)
+  Ages <- Ages[,c("GeneID","GeneAge")]
+  
+  Ages <- merge(Coordinates,Ages,by.x="Gene",by.y="GeneID",all=TRUE)
+  Ages <- Ages[,c("Gene","GeneAge","Gene_Start_bp","Gene_End_bp","Chromosome","Symbol")]
+  Ages$GeneAge <- as.character(Ages$GeneAge)
+  chromosomes <- c(1:22,'X')
+  Ages <- Ages[which(Ages$Chromosome %in% chromosomes),]
+  
+  Ages[is.na(Ages)] <- "No Age Provided"
+  for(j in 1:nrow(Ages)){
+    if(Ages[j,"GeneAge"] == "Simiiformes") {Ages[j,"GeneAge"] <- "Primate" }
+    if(Ages[j,"GeneAge"] == "Catarrhini") {Ages[j,"GeneAge"] <- "Primate" }
+    if(Ages[j,"GeneAge"] == "Hominoidea") {Ages[j,"GeneAge"] <- "Primate" }
+    if(Ages[j,"GeneAge"] == "Hominidae") {Ages[j,"GeneAge"] <- "Primate" }
+    if(Ages[j,"GeneAge"] == "HomoPanGorilla") {Ages[j,"GeneAge"] <- "Primate" }
+    if(Ages[j,"GeneAge"] == "HomoSapiens") {Ages[j,"GeneAge"] <- "Primate" }
+  }
+  
+  GM_Ensembl <- overlap.genes(Ages,Map)
+  GM_Ensembl <- GM_Ensembl[,c("baitID","baitChr","baitStart","baitEnd","bait_Name","bait_Age","oeID","oeChr","oeStart","oeEnd","oe_Name","oe_Age")]
+  
+  GM_Young_Frags <- young.network.frags(GM_Ensembl)
+  GM_Young <- young.network(GM_Ensembl,GM_Young_Frags)
+  
+  RandomAges[,i] <-  tad.assortativity(GM_Young,GM_Young_Frags,paste0("/RandomAges/GM_Agerand",i,"_TAD_Assortativity"),"Human GM cell line randomised")[,2]
+}
+rownames(RandomAges) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+save(RandomAges,file=paste0(path,"/RandomAges.rData"))
+
+AssortAges <- data.frame(Original = TADAssortativity[,2],AgeMean = rowMeans(RandomAges),Agesd = c(sd(RandomAges[1,]),sd(RandomAges[2,]),sd(RandomAges[3,]),sd(RandomAges[4,])),AgeDifference= TADAssortativity[,2] -  rowMeans(RandomAges))
+rownames(AssortAges) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+save(AssortAges,file=paste0(path,"/Random_Ages_differences.rData"))
+
+
+#Final Graph ----
+All <- as.data.table(cbind(FusedDiff,Assort[,-1],AssortAges[,-1]))
+All <- t(All[,c(1,2,4,7)])
+colnames(All) <- c("Full network","Intra-TAD","Inter-TAD","Interchromosomal")
+row.names(All) <- c("Original TADs","Fused TADs","Randomised TADs (mean)","Randomised ages (mean)")
+All <- All[,c(1:3)]
 
 All <- reshape2::melt(All,id.vars=c("Type"))
 All$sd <- NA
-All[6,"sd"] <- Assort[2,3]
-All[9,"sd"] <- Assort[3,3]
+All[7,"sd"] <- Assort[2,3]
+All[11,"sd"] <- Assort[3,3]
+All[4,"sd"] <- AssortAges[1,3]
+All[8,"sd"] <- AssortAges[2,3]
+All[12,"sd"] <- AssortAges[3,3]
 
 print(allTADs <- ggplot(data=All,aes(y=value,x=Var2,fill=Var1))+
         geom_bar(stat="identity",position="dodge")+
         geom_errorbar(aes(ymin=value-sd, ymax=value+sd), width=.5,
                       position=position_dodge(.9)) +
-        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity Scores for different interaction types (human GM cell line network)
-             when TADs are unchanged, fused, and randomised", fill= "TAD Type") )
+        labs(y="Assortativity score",x="Interaction Type", title = "Assortativity scores for different interaction types in the human GM cell line network", fill= "TAD Type") )
 
 pdf(file = paste0(path,"/GM_All_TAD_Assortativity.pdf"),width=8,height=8)
 allTADs
