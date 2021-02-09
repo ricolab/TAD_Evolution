@@ -1,0 +1,538 @@
+#Packages ----
+library(plyr)
+library(dplyr)
+library(GenomicRanges)
+library(data.table)
+library(ggpubr)
+library(ggplot2)
+library(gridExtra)
+
+#Functions ----
+prepare.tads <- function(species){
+  #Read in TADS
+  if(TADFILE %like% ".xls"){  
+    TADs <- readxl::read_excel(paste0(path,TADFILE))}
+  if (TADFILE %like% ".bed"){
+    TADs <- as.data.frame(read.delim(paste0(path,TADFILE),header=F))}
+  if (TADFILE %like% ".tsv"){
+    TADs <-  read.table(paste0(path,TADFILE),header=T)}
+  
+  colnames(TADs) <- c("chr","start","end")
+  TADs$TAD <- paste("TAD",1:nrow(TADs))
+  TADs <- TADs[, c("chr","start","end","TAD")]
+  
+  #Gene age and coordinate data
+  if(AGEFILE %like% ".csv"){
+    Ages <- read.csv(paste0(path,AGEFILE))
+  }
+  if(AGEFILE %like% ".txt"){
+    Ages <- read.table(paste0(path,AGEFILE), na.strings=c("unclear","NA"),header=T)
+  }
+  Ages <- Ages[,c("GeneID","GeneAge")]
+  Ages <- merge(Ages,Coordinates,by.x="GeneID",by.y="Gene", all.y=TRUE)
+  Ages <- Ages[,c("GeneID","GeneAge","Gene_Start_bp","Gene_End_bp","Chromosome","Symbol")]
+  Ages$GeneAge <- as.character(Ages$GeneAge)
+  Ages[is.na(Ages)] <- "No Age Provided"
+  
+  
+  if(species == "Mouse"|species=="Mice"|species=="Mus musculus"){
+    chromosomes <- c(1:19,"X")
+    Ages <- Ages[which(Ages$Chromosome %in% chromosomes),]
+        for(i in 1:nrow(Ages)){
+      if(Ages[i,"GeneAge"] == "Fungi-Metazoa_group") {Ages[i,"GeneAge"] <- "FungiMetazoa" }
+      if(Ages[i,"GeneAge"] == "Glires") {Ages[i,"GeneAge"] <- "Rodent" }
+      if(Ages[i,"GeneAge"] == "Rodentia") {Ages[i,"GeneAge"] <- "Rodent" }
+      if(Ages[i,"GeneAge"] == "Sciurognathi") {Ages[i,"GeneAge"] <- "Rodent" }
+      if(Ages[i,"GeneAge"] == "Murinae") {Ages[i,"GeneAge"] <- "Rodent" }
+      if(Ages[i,"GeneAge"] == "Mus.musculus") {Ages[i,"GeneAge"] <- "Rodent" }
+    }
+  } 
+  else if (species == "Human"|species == "Humans"|species == "Homo sapiens"){
+    chromosomes <- c(1:22,"X")
+    Ages <- Ages[which(Ages$Chromosome %in% chromosomes),]
+    
+    for(i in 1:nrow(Ages)){
+      if(Ages[i,"GeneAge"] == "Simiiformes") {Ages[i,"GeneAge"] <- "Primate" }
+      if(Ages[i,"GeneAge"] == "Catarrhini") {Ages[i,"GeneAge"] <- "Primate" }
+      if(Ages[i,"GeneAge"] == "Hominoidea") {Ages[i,"GeneAge"] <- "Primate" }
+      if(Ages[i,"GeneAge"] == "Hominidae") {Ages[i,"GeneAge"] <- "Primate" }
+      if(Ages[i,"GeneAge"] == "HomoPanGorilla") {Ages[i,"GeneAge"] <- "Primate" }
+      if(Ages[i,"GeneAge"] == "HomoSapiens") {Ages[i,"GeneAge"] <- "Primate" }
+    }
+    
+  } 
+  else (print("ERROR - SPECIES NOT RECOGNISED OR SUPPORTED"))
+  
+  oldw <- getOption("warn")
+  options(warn = -1)
+  if(!TADs$chr %like% "chr"){TADs$chr <- paste0("chr",TADs$chr)}
+  options(warn = oldw)
+  TADGRange <- makeGRangesFromDataFrame(TADs,
+                                        keep.extra.columns=T,
+                                        ignore.strand=FALSE,
+                                        seqinfo=NULL,
+                                        seqnames.field=c("chr"),
+                                        start.field="start",
+                                        end.field=c("end"),
+                                        strand.field="strand",
+                                        starts.in.df.are.0based=FALSE)
+  oldw <- getOption("warn")
+  options(warn = -1)
+  if(!Ages$Chromosome %like% "chr"){Ages$Chromosome <- paste0("chr",Ages$Chromosome)}
+  options(warn = oldw)
+  AgeGRange <- makeGRangesFromDataFrame(Ages,
+                                        keep.extra.columns=T,
+                                        ignore.strand=FALSE,
+                                        seqinfo=NULL,
+                                        seqnames.field=c("Chromosome"),
+                                        start.field="Gene_Start_bp",
+                                        end.field=c("Gene_End_bp"),
+                                        strand.field="strand",
+                                        starts.in.df.are.0based=FALSE)
+  MetaMerge <- function(frag) {
+    
+    hits <- findOverlaps(frag, AgeGRange) # Finds all overlaps
+    match_hit <- data.frame(frag[queryHits(hits)] , data.frame(AgeGRange[subjectHits(hits)] ),stringsAsFactors=T)
+    bait_match_hit <- data.frame(frag[queryHits(hits)] ,stringsAsFactors=T)
+    CS_match_hit <- data.frame(AgeGRange[subjectHits(hits)]  ,stringsAsFactors=T)
+    
+    
+    Bait_Score_CS <- makeGRangesFromDataFrame(match_hit, keep.extra.columns = T)
+    x <- makeGRangesFromDataFrame(bait_match_hit, keep.extra.columns = T)
+    y <- makeGRangesFromDataFrame(CS_match_hit, keep.extra.columns = T)
+    overlaps <- pintersect(x,y)
+    percentageOverlap <- width(overlaps) / width(x)
+    match_hit <- data.frame(frag[queryHits(hits)] , data.frame(mcols(AgeGRange[subjectHits(hits)] )), data.frame(percentageOverlap), stringsAsFactors=T)
+    
+    df = as(match_hit, "data.frame")
+    return(df)
+    
+  }
+  
+  TADs <- MetaMerge(TADGRange)
+  
+  value = TADs
+  
+}
+define.tad.ages <- function(species){
+  TADs <- prepare.tads(species)
+  TADLengths <- data.frame(matrix(0, nrow = length(unique(TADs$TAD)), ncol = 1))
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    TADLengths[i,1] <- nrow(TAD)
+  }
+  RankOrder$AgeGroup <- c(rep("Old",5),rep("Mid",5),"Young","Mid",NA)
+  
+  TADAges <- data.frame(matrix(NA, nrow = nrow(TADLengths), ncol = 3))
+  colnames(TADAges) <- c("TAD","Age","Genes")
+  TADAges$TAD <- 1:nrow(TADAges)
+  
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    TADAges[i,"Genes"] <- nrow(TAD)
+    if(nrow(TAD) == 1){
+      Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+      TADAges[i,"Age"] <- Age$AgeGroup
+    }
+    else{
+      Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+      if(nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Young"),])){
+        TADAges[i,"Age"] <- "Old"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Young"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Mid"),])> nrow(Age[which(Age$AgeGroup == "Young"),])& nrow(Age[which(Age$AgeGroup == "Mid"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Mid"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Young"),])== nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Young"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Old"),])== nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Young"),])){
+        TADAges[i,"Age"] <- "Old"
+        if(nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])== nrow(Age[which(Age$AgeGroup == "Young"),])){
+          TADAges[i,"Age"] <- "Split"
+        }
+        
+      }
+      
+    }
+  }
+  TADAges[is.na(TADAges)] <- "Split"
+  TADAges$PercentOld <- NA
+  TADAges$PercentYoung <- NA
+  old <- RankOrder[1:5,1]
+  young <- RankOrder[11,1]
+  
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    
+    countold <- nrow(TAD[TAD$GeneAge %in% old,])
+    countyoung <- nrow(TAD[TAD$GeneAge %in% young,])
+    TADAges[i,"PercentOld"] <- 100*(countold/TADAges[i,"Genes"])
+    TADAges[i,"PercentYoung"] <- 100*(countyoung/TADAges[i,"Genes"])
+  }
+  
+  
+  
+  Essentiality <- read.delim(paste0(path,"/gene_essentiality.txt"))
+  if (species == "Human"|species == "Humans"|species == "Homo sapiens"){
+    Essentiality <- Essentiality[which(Essentiality$sciName == "Homo sapiens"),]}
+  if(species == "Mouse"|species=="Mice"|species=="Mus musculus"){
+    Essentiality <- Essentiality[which(Essentiality$sciName == "Mus musculus"),]}
+  Essentiality <- droplevels(Essentiality)
+  Essentiality <-  unique(Essentiality[,c("sciName","locus","essential")])
+  Ess <- as.data.frame(table(Essentiality$locus))
+  Essentiality <- merge(Essentiality,Ess,by.x="locus",by.y="Var1")
+  
+  
+  TADAges$PercentEssential<- NA
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    countessential <- nrow(TAD[which(TAD$GeneID %in% Essentiality[which(Essentiality$essential == "E"),"locus"]),])
+    TADAges[i,"PercentEssential"] <- 100*(countessential/TADAges[i,"Genes"])
+  }
+  
+  save(TADAges,file=paste0(path,"/",species,"TADAges.rData"))
+  
+  TADs <- merge(TADs,Essentiality[,c("locus","essential")],by.x="GeneID",by.y="locus")
+  
+  save(TADs,file=paste0(path,"/",species,"TADGenes.rData"))
+  
+  Split <- TADAges[which(TADAges$Age == "Split"),]
+  Old <- TADAges[which(TADAges$Age == "Old"),]
+  Young <- TADAges[which(TADAges$Age == "Young"),]
+  Mid <- TADAges[which(TADAges$Age == "Mid"),]
+  
+  Young <- Young[which(Young$Genes > 1),]
+  Old <- Old[which(Old$Genes > 1),]
+  
+  YoungTADs <- data.frame(matrix(NA,ncol=5))
+  colnames(YoungTADs) <- c("GeneID","GeneAge","TAD","AgeGroup","essential")
+  Young$Old <- NA
+  for(i in 1:nrow(Young)){
+    j = Young[i,"TAD"]
+    TAD <- TADs[which(TADs$TAD == paste("TAD",j)),]
+    Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+    if("Old" %in% Age$AgeGroup ){Young[i,"Old"] <- "Yes"
+    YoungTADs <- rbind(YoungTADs,Age[,c("GeneID","GeneAge","TAD","AgeGroup","essential")])
+    } 
+    else{Young[i,"Old"] <- "No"}
+  }
+  YoungTADs <- YoungTADs[-1,]
+  
+  
+  OldTADs <- data.frame(matrix(NA,ncol=5))
+  colnames(OldTADs) <- c( "GeneID","GeneAge","TAD","AgeGroup","essential")
+  Old$Young <- NA
+  for(i in 1:nrow(Old)){
+    j = Old[i,"TAD"]
+    TAD <- TADs[which(TADs$TAD == paste("TAD",j)),]
+    Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+    if("Young" %in% Age$AgeGroup ){Old[i,"Young"] <- "Yes"
+    OldTADs <- rbind(OldTADs,Age[,c("GeneID","GeneAge","TAD","AgeGroup","essential")])} 
+    else{Old[i,"Young"] <- "No"}
+  }
+  OldTADs <- OldTADs[-1,]
+  
+  YoungTADsOld <- YoungTADs[which(YoungTADs$AgeGroup == "Old"),]
+  YoungTADsOld <- unique(YoungTADsOld[,c("GeneID","essential")])
+  YoungTADsYoung <- YoungTADs[which(YoungTADs$AgeGroup == "Young"),]
+  YoungTADsYoung <- unique(YoungTADsYoung[,c("GeneID","essential")])
+  OldTADsOld <- OldTADs[which(OldTADs$AgeGroup == "Old"),]
+  OldTADsOld <- unique(OldTADsOld[,c("GeneID","essential")])
+  OldTADsYoung <- OldTADs[which(OldTADs$AgeGroup == "Young"),]
+  OldTADsYoung <- unique(OldTADsYoung[,c("GeneID","essential")])
+  
+  write.table(YoungTADsOld,file=paste0(path,"/YoungTADsOld.txt"),append = FALSE, quote=FALSE,row.names=FALSE,col.names = FALSE)
+  write.table(YoungTADsYoung,file=paste0(path,"/YoungTADsYoung.txt"),append = FALSE, quote=FALSE,row.names=FALSE,col.names = FALSE)
+  write.table(OldTADsOld,file=paste0(path,"/OldTADsOld.txt"),append = FALSE, quote=FALSE,row.names=FALSE,col.names = FALSE)
+  write.table(OldTADsYoung,file=paste0(path,"/OldTADsYoung.txt"),append = FALSE, quote=FALSE,row.names=FALSE,col.names = FALSE)
+  
+  TADlist <- list(YoungTADsYoung,OldTADsYoung,YoungTADsOld,OldTADsOld)
+  names(TADlist) <-c("YoungTADsYoung","OldTADsYoung","YoungTADsOld","OldTADsOld")
+  value = TADlist
+}
+gene.essentiality <- function(species){
+  TADs <- prepare.tads(species)
+  TADLengths <- data.frame(matrix(0, nrow = length(unique(TADs$TAD)), ncol = 1))
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    TADLengths[i,1] <- nrow(TAD)
+  }
+  RankOrder$AgeGroup <- c(rep("Old",5),rep("Mid",5),"Young","Mid",NA)
+  
+  TADAges <- data.frame(matrix(NA, nrow = nrow(TADLengths), ncol = 3))
+  colnames(TADAges) <- c("TAD","Age","Genes")
+  TADAges$TAD <- 1:nrow(TADAges)
+  
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    TADAges[i,"Genes"] <- nrow(TAD)
+    if(nrow(TAD) == 1){
+      Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+      TADAges[i,"Age"] <- Age$AgeGroup
+    }
+    else{
+      Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+      if(nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Young"),])){
+        TADAges[i,"Age"] <- "Old"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Young"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Mid"),])> nrow(Age[which(Age$AgeGroup == "Young"),])& nrow(Age[which(Age$AgeGroup == "Mid"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Mid"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Young"),])== nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Young"),])> nrow(Age[which(Age$AgeGroup == "Old"),])){
+        TADAges[i,"Age"] <- "Young"
+      }
+      if(nrow(Age[which(Age$AgeGroup == "Old"),])== nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Young"),])){
+        TADAges[i,"Age"] <- "Old"
+        if(nrow(Age[which(Age$AgeGroup == "Old"),])> nrow(Age[which(Age$AgeGroup == "Mid"),])& nrow(Age[which(Age$AgeGroup == "Old"),])== nrow(Age[which(Age$AgeGroup == "Young"),])){
+          TADAges[i,"Age"] <- "Split"
+        }
+        
+      }
+      
+    }
+  }
+  TADAges[is.na(TADAges)] <- "Split"
+  TADAges$PercentOld <- NA
+  TADAges$PercentYoung <- NA
+  old <- RankOrder[1:5,1]
+  young <- RankOrder[11,1]
+  
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    
+    countold <- nrow(TAD[TAD$GeneAge %in% old,])
+    countyoung <- nrow(TAD[TAD$GeneAge %in% young,])
+    TADAges[i,"PercentOld"] <- 100*(countold/TADAges[i,"Genes"])
+    TADAges[i,"PercentYoung"] <- 100*(countyoung/TADAges[i,"Genes"])
+  }
+  
+  ### FIGURE 1
+  
+  TADAges$Jitter <- jitter(TADAges$PercentOld,15)
+  TADAges$Jitter2 <- jitter(TADAges$PercentYoung,15)
+  
+  
+  TADAges$GroupYoung <- "90-100"
+  TADAges[which(TADAges$PercentYoung < 90),"GroupYoung"] <- "80-90"
+  TADAges[which(TADAges$PercentYoung < 80),"GroupYoung"] <- "70-80"
+  TADAges[which(TADAges$PercentYoung < 70),"GroupYoung"] <- "60-70"
+  TADAges[which(TADAges$PercentYoung < 60),"GroupYoung"] <- "50-60"
+  TADAges[which(TADAges$PercentYoung < 50),"GroupYoung"] <- "40-50"
+  TADAges[which(TADAges$PercentYoung < 40),"GroupYoung"] <- "30-40"
+  TADAges[which(TADAges$PercentYoung < 30),"GroupYoung"] <- "20-30"
+  TADAges[which(TADAges$PercentYoung < 20),"GroupYoung"] <- "10-20"
+  TADAges[which(TADAges$PercentYoung < 10),"GroupYoung"] <- "0-10"
+  
+  
+  TADAges$GroupOld <- "90-100"
+  TADAges[which(TADAges$PercentOld < 90),"GroupOld"] <- "80-90"
+  TADAges[which(TADAges$PercentOld < 80),"GroupOld"] <- "70-80"
+  TADAges[which(TADAges$PercentOld < 70),"GroupOld"] <- "60-70"
+  TADAges[which(TADAges$PercentOld < 60),"GroupOld"] <- "50-60"
+  TADAges[which(TADAges$PercentOld < 50),"GroupOld"] <- "40-50"
+  TADAges[which(TADAges$PercentOld < 40),"GroupOld"] <- "30-40"
+  TADAges[which(TADAges$PercentOld < 30),"GroupOld"] <- "20-30"
+  TADAges[which(TADAges$PercentOld < 20),"GroupOld"] <- "10-20"
+  TADAges[which(TADAges$PercentOld < 10),"GroupOld"] <- "0-10"
+  
+  TADAges$Colour <- "black"
+  TADAges[which(TADAges$PercentOld > 50),"Colour"] <- "#c42c21"
+  TADAges[which(TADAges$PercentYoung > 50),"Colour"] <- "#840096"
+  
+  
+  YO <- ggplot(TADAges,aes(x=Jitter,y=Jitter2,colour=Colour))+
+    geom_point(shape=1,colour=TADAges$Colour)+
+    xlab("Percentage of old genes")+
+    ylab("Percentage of young genes")+
+    ggtitle(paste0(species))+
+    theme_minimal()+
+    theme(plot.title = element_text(size = 20, face = "bold",hjust=0.5))
+  
+  
+  
+  ### FIGURE 2
+  
+  Essentiality <- read.delim(paste0(path,"/gene_essentiality.txt"))
+  if (species == "Human"|species == "Humans"|species == "Homo sapiens"){
+    Essentiality <- Essentiality[which(Essentiality$sciName == "Homo sapiens"),]}
+  if(species == "Mouse"|species=="Mice"|species=="Mus musculus"){
+    Essentiality <- Essentiality[which(Essentiality$sciName == "Mus musculus"),]}
+  Essentiality <- droplevels(Essentiality)
+  Essentiality <-  unique(Essentiality[,c("sciName","locus","essential")])
+  Ess <-  unique(Essentiality[which(Essentiality$essential == "E"),])
+  NoEss <- unique(Essentiality[-which(Essentiality$locus %in% Ess$locus),])
+  Essentiality <- rbind(Ess,NoEss)
+  
+  TADAges$PercentEssential<- NA
+  for (i in 1:length(unique(TADs$TAD))){
+    TAD <- TADs[which(TADs$TAD == paste("TAD",i)),]
+    countessential <- nrow(TAD[which(TAD$GeneID %in% Essentiality[which(Essentiality$essential == "E"),"locus"]),])
+    TADAges[i,"PercentEssential"] <- 100*(countessential/TADAges[i,"Genes"])
+  }
+  
+  OE <- ggplot(TADAges,aes(x=GroupOld,y=PercentEssential))+
+    geom_boxplot(fill=c(rep("grey80",5),rep("#e83535",5)))+
+    xlab("Percentage of old genes")+
+    ylab("Percentage of essential genes")+
+    theme_minimal()
+  
+  ### FIGURE 3
+  
+  if(AGEFILE %like% ".csv"){
+    Ages <- read.csv(paste0(path,AGEFILE))
+  }
+  if(AGEFILE %like% ".txt"){
+    Ages <- read.table(paste0(path,AGEFILE), na.strings=c("unclear","NA"),header=T)
+  }
+  
+  
+  
+  TADs <- merge(TADs,Essentiality[,c("locus","essential")],by.x="GeneID",by.y="locus",all.x=TRUE)
+  
+  Split <- TADAges[which(TADAges$Age == "Split"),]
+  Old <- TADAges[which(TADAges$Age == "Old"),]
+  Young <- TADAges[which(TADAges$Age == "Young"),]
+  Mid <- TADAges[which(TADAges$Age == "Mid"),]
+  
+  Young <- Young[which(Young$Genes > 1),]
+  Old <- Old[which(Old$Genes > 1),]
+  
+  YoungTADs <- data.frame(matrix(NA,ncol=5))
+  colnames(YoungTADs) <- c("GeneID","GeneAge","TAD","AgeGroup","essential")
+  Young$Old <- NA
+  for(i in 1:nrow(Young)){
+    j = Young[i,"TAD"]
+    TAD <- TADs[which(TADs$TAD == paste("TAD",j)),]
+    Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+    if("Old" %in% Age$AgeGroup ){Young[i,"Old"] <- "Yes"
+    YoungTADs <- rbind(YoungTADs,Age[,c("GeneID","GeneAge","TAD","AgeGroup","essential")])
+    }else{Young[i,"Old"] <- "No"}
+  }
+  YoungTADs <- YoungTADs[-1,]
+  
+  
+  OldTADs <- data.frame(matrix(NA,ncol=5))
+  colnames(OldTADs) <- c( "GeneID","GeneAge","TAD","AgeGroup","essential")
+  Old$Young <- NA
+  for(i in 1:nrow(Old)){
+    j = Old[i,"TAD"]
+    TAD <- TADs[which(TADs$TAD == paste("TAD",j)),]
+    Age <- merge(TAD,RankOrder,by.x="GeneAge",by.y="Rank")
+    if("Young" %in% Age$AgeGroup ){Old[i,"Young"] <- "Yes"
+    OldTADs <- rbind(OldTADs,Age[,c("GeneID","GeneAge","TAD","AgeGroup","essential")])} 
+    else{Old[i,"Young"] <- "No"}
+  }
+  OldTADs <- OldTADs[-1,]
+  
+  YoungTADsOld <- YoungTADs[which(YoungTADs$AgeGroup == "Old"),]
+  YoungTADsOld <- unique(YoungTADsOld[,c("GeneID","essential")])
+  YoungTADsYoung <- YoungTADs[which(YoungTADs$AgeGroup == "Young"),]
+  YoungTADsYoung <- unique(YoungTADsYoung[,c("GeneID","essential")])
+  OldTADsOld <- OldTADs[which(OldTADs$AgeGroup == "Old"),]
+  OldTADsOld <- unique(OldTADsOld[,c("GeneID","essential")])
+  OldTADsYoung <- OldTADs[which(OldTADs$AgeGroup == "Young"),]
+  OldTADsYoung <- unique(OldTADsYoung[,c("GeneID","essential")])
+  
+  
+  
+  EssentialGenes <- data.frame(matrix(NA,nrow=4,ncol=2,dimnames=list(c("YoungTADsYoung","OldTADsYoung","YoungTADsOld","OldTADsOld"),c("Essential","Nonessential"))))
+  EssentialGenes[1,] <- table(YoungTADsYoung$essential)
+  EssentialGenes[2,] <- table(OldTADsYoung$essential)
+  EssentialGenes[3,] <- table(YoungTADsOld$essential)
+  EssentialGenes[4,] <- table(OldTADsOld$essential)
+  EssentialGenes$Proportion <- EssentialGenes$Essential/(EssentialGenes$Essential+EssentialGenes$Nonessential) * 100
+  
+  EssentialGenes$Groups <- c("Young Genes \n Young TAD","Young Genes \n Old TAD","Old Genes \n Young TAD","Old Genes \n Old TAD")
+  
+  YoungGenes <- chisq.test(t(EssentialGenes[c(1,2),1:2]))
+  OldGenes<- chisq.test(t(EssentialGenes[c(3,4),1:2]))
+  YoungTADs <- chisq.test(t(EssentialGenes[c(1,3),1:2]))
+  OldTADs<- chisq.test(t(EssentialGenes[c(2,4),1:2]))
+  EssentialPValues <- data.frame(group1 = c("Young Genes \n Young TAD","Old Genes \n Young TAD","Young Genes \n Young TAD","Young Genes \n Old TAD"),
+                                 group2=c("Young Genes \n Old TAD","Old Genes \n Old TAD","Old Genes \n Young TAD","Old Genes \n Old TAD"),p= c(YoungGenes$p.value,OldGenes$p.value,YoungTADs$p.value,OldTADs$p.value))
+  EssentialPValues$pvalue <- "ns"
+  EssentialPValues[which(EssentialPValues$p < 0.05),"pvalue"] <- "*"
+  EssentialPValues[which(EssentialPValues$p < 0.01),"pvalue"] <- "**"
+  EssentialPValues[which(EssentialPValues$p < 0.001),"pvalue"] <- "***"
+  
+  Colours <- c("#df00ff","#840096","#e83535","#c42c21")
+  
+  EssentialGenes <- melt(EssentialGenes[,3:4])
+  EssentialGenes$Groups <- factor(EssentialGenes$Groups,levels=c("Young Genes \n Young TAD","Young Genes \n Old TAD","Old Genes \n Young TAD","Old Genes \n Old TAD"))
+  
+  
+  EE  <- ggplot(EssentialGenes,aes(x=Groups,y=value))+
+    geom_bar(stat="identity",fill=Colours,color="black",size=1)+
+    xlab(" ")+
+    ylab("Percentage Essential Genes")+
+    theme_minimal()+
+    stat_pvalue_manual(EssentialPValues,y.position = 50, step.increase = 0.1,label="pvalue")  
+  
+  pdf(paste0(path,"/",species,"TADGraphs.pdf"),height=15, width=5)
+  grid.arrange(YO,OE,EE,ncol=1)
+  dev.off()
+  
+  AllGraphs <- grid.arrange(YO,OE,EE,ncol=1)
+  
+  return(AllGraphs)
+}
+
+#Path ----
+path <- #Insert your path here - this is imporant for the code to work!!!
+
+
+#Human
+#First you give the following variables:
+#The directory where all the files are 
+
+#Name of the unrandomised TAD file
+TADFILE <- "/TADs.bed"
+
+#Name of the gene age file
+AGEFILE <- "/HumanAges_v75.csv"
+
+#Name of the gene coordinates file
+genes <- biomaRt::useEnsembl(biomart="ensembl",dataset = "hsapiens_gene_ensembl", version=75)
+Coordinates <- biomaRt::getBM(mart = genes, filters = 'biotype', values = 'protein_coding' ,attributes =c('ensembl_gene_id','start_position','end_position','chromosome_name','hgnc_symbol') )
+colnames(Coordinates) <- c("Gene","Gene_Start_bp","Gene_End_bp","Chromosome","Symbol")
+
+#This table keeps the gene ages in the right order
+RankOrder <- data.frame(c("FungiMetazoa","Bilateria","Chordata","Euteleostomi","Sarcopterygii","Tetrapoda","Amniota","Mammalia","Theria","Eutheria","Primate","No Age Provided","Non-genic"))
+colnames(RankOrder) <- "Rank"
+RankOrder$Order <- c(1:13)
+RankOrder$Rank <- as.character(RankOrder$Rank)
+save(RankOrder,file=paste0(path,"/RankOrder.rData"))
+
+#For the unrandomised TAD
+HumanTADs <- gene.essentiality("Human")
+  
+
+
+#Mouse
+#First you give the following variables:
+#Name of the unrandomised TAD file
+TADFILE <- "/mESC_TADs.xlsx"
+
+#Name of the gene age file
+AGEFILE <- "/MiceAges.txt"
+
+#Name of the gene coordinates file
+genes <- biomaRt::useEnsembl(biomart="ensembl",dataset = "mmusculus_gene_ensembl", version=67)
+Coordinates <- biomaRt::getBM(mart = genes, filters = 'biotype', values = 'protein_coding' ,attributes =c('ensembl_gene_id','start_position','end_position','chromosome_name','mgi_symbol') )
+colnames(Coordinates) <- c("Gene","Gene_Start_bp","Gene_End_bp","Chromosome","Symbol")
+
+#This table keeps the gene ages in the right order
+RankOrder <- data.frame(c("FungiMetazoa","Bilateria","Chordata","Euteleostomi","Sarcopterygii","Tetrapoda","Amniota","Mammalia","Theria","Eutheria","Rodent","No Age Provided","Non-genic"))
+colnames(RankOrder) <- "Rank"
+RankOrder$Order <- c(1:13)
+RankOrder$Rank <- as.character(RankOrder$Rank)
+save(RankOrder,file=paste0(path,"/RankOrder.rData"))
+
+#For the unrandomised TAD
+MouseTADs <- gene.essentiality("Mouse")
