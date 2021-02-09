@@ -1,6 +1,6 @@
 # added on 16nov-2020 to include rndAge
-
-randomiseAllAges2 = function(myTable, ageColumn) {
+randomiseAllAges2 = function(myTable, ageColumn, seed = 0) {
+	set.seed(seed) # comment this if you don't want a deterministic random distribution
 	newTable = myTable
 	myAges = as.character(myTable[, ageColumn])
 	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
@@ -11,6 +11,17 @@ randomiseAllAges2 = function(myTable, ageColumn) {
 	return(newTable)
 	}
 
+randomiseAllAges = function(myTable, seed = 0) {
+	# set.seed(seed) # uncomment this if you do want a deterministic random distribution
+	newTable = myTable
+	myAges = as.character(myTable$gene_age)
+	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
+	colnames(scramblingTable) = c("gene_age", "rnd")
+	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
+	newTable$gene_age = scramblingTable$gene_age
+	
+	return(newTable)
+	}
 
 # Primates = Simiiformes + Catarrhini + Hominoidea + Hominidae + HomoPanGorilla + HomoSapiens
 # Eutheria = Eutheria + Glires
@@ -31,11 +42,7 @@ replaceAges = function(myTable, myColumnNumber, replacementTable) {
     
     }
     
-
-
-
 # this function is similar to fillTableWithGeneTypes
-# which can be found at: /home/marco/Dropbox/labejo/taskoj/2019/2019-05-23 BioMart with R/comandos.txt
 # input myTADs have four columns:
 #     chr --> as 1, 2, 3, ... X
 #     start
@@ -75,9 +82,6 @@ fromCSVAgesToTSVAges = function(inputFile, outputFile) {
 	write.table(tsvTable, file = outputFile, sep = "\t", row.names = FALSE)
 	print("Done.")
 	}
-# fromCSVAgesToTSVAges(inputFile = "/mnt/sexreg/temporal/geneage/Ages.csv", outputFile = "/mnt/sexreg/temporal/geneage/AgesWithChrX.tsv")
-	
-
 
 getTADGenesTable = function(myGenes, myTADs) {
 	feedbackLoop = 1000
@@ -90,7 +94,6 @@ getTADGenesTable = function(myGenes, myTADs) {
 	TADGenesTableStack = data.frame()
 	geneDistribution = c()
 	for (i in 1:nrow(myGenes)) {
-	#for (i in 1:3000) {
 		if (i %% feedbackLoop == 0) print(paste0("Checking gene #", i, "/", nrow(myGenes)))
 		row = myGenes[i,]
 		mySubset = subset(myTADs, myTADs$end > row$start_position & myTADs$start < row$end_position & myTADs$chr == row$chromosome_name)
@@ -375,17 +378,7 @@ makeAllOneHugeTAD = function(myTable, hugeTADName = "hugeTAD") {
 	return(newTable)
 	}
 	
-randomiseAllAges = function(myTable) {
-	newTable = myTable
-	myAges = as.character(myTable$gene_age)
-	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
-	colnames(scramblingTable) = c("gene_age", "rnd")
-	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
-	newTable$gene_age = scramblingTable$gene_age
-	
-	return(newTable)
-	}
-	
+
 getPairData = function(TADTable, age1 = "", age2 = "", totRandomisations = 30, verbose = FALSE, showGraph = FALSE) {
 	maxSgnMinusLofPValue = 30
 	
@@ -622,7 +615,9 @@ getGeneAgeEssentialityTable = function(geneAgeList, essentialGenes) {
     
     }
 
-tableReducer = function(myGeneTADAgeTable, ageNumbersFile) {
+tableReducer = function(myGeneTADAgeTable, ageNumbersFile, seed = 0) {
+
+	set.seed(seed) # comment this if you don't want a deterministic random distribution
 	
 	ageNumbers = as.data.frame(read.table(ageNumbersFile, header = TRUE, sep = "\t"))
 	ageNumbers$age = as.character(ageNumbers$age)
@@ -861,4 +856,34 @@ Hominoidea,Primates
 Hominidae,Primates
 HomoPanGorilla,Primates
 HomoSapiens,Primates
+"))
+
+ageListHuman = as.data.frame(read.table(header = TRUE, text = "
+age
+FungiMetazoa
+Bilateria
+Chordata
+Euteleostomi
+Sarcopterygii
+Tetrapoda
+Amniota
+Mammalia
+Theria
+Eutheria
+Primates
+"))
+
+ageListMouse = as.data.frame(read.table(header = TRUE, text = "
+age
+FungiMetazoa
+Bilateria
+Chordata
+Euteleostomi
+Sarcopterygii
+Tetrapoda
+Amniota
+Mammalia
+Theria
+Eutheria
+GliresRodentia
 "))
