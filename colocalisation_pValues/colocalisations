@@ -1,6 +1,38 @@
-################################
-##### 2020-02-12
-################################
+# added on 16nov-2020 to include rndAge
+
+randomiseAllAges2 = function(myTable, ageColumn) {
+	newTable = myTable
+	myAges = as.character(myTable[, ageColumn])
+	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
+	colnames(scramblingTable) = c(ageColumn, "rnd")
+	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
+	newTable[, ageColumn] = scramblingTable[, ageColumn]
+	
+	return(newTable)
+	}
+
+
+# Primates = Simiiformes + Catarrhini + Hominoidea + Hominidae + HomoPanGorilla + HomoSapiens
+# Eutheria = Eutheria + Glires
+# Rodentia = Rodentia + Sciurognathi + Murinae + Mus.musculus
+
+replaceAges = function(myTable, myColumnNumber, replacementTable) {
+    
+    resultingTable = myTable
+	resultingTable[,myColumnNumber] = as.character(resultingTable[,myColumnNumber])
+	replacementTable[,1] = as.character(replacementTable[,1])
+	replacementTable[,2] = as.character(replacementTable[,2])
+	
+    for (i in 1:nrow(replacementTable)) {
+		resultingTable[resultingTable[,myColumnNumber] == replacementTable[i, "from"], colnames(resultingTable)[myColumnNumber]] = replacementTable[i, "to"]
+        }
+		
+    return(resultingTable)
+    
+    }
+    
+
+
 
 # this function is similar to fillTableWithGeneTypes
 # which can be found at: /home/marco/Dropbox/labejo/taskoj/2019/2019-05-23 BioMart with R/comandos.txt
@@ -81,12 +113,12 @@ getTADGenesTable = function(myGenes, myTADs) {
 		return(TADGenesTable)
 	}
 	
-# this function uses twi input files:
+# this function uses two input files:
 # 1) the output of getTADGenesTable,
 # 2) a file including ensembl gene ids with ages, 
 # which is like this one downloadable from https://ndownloader.figshare.com/files/14163824
 # in turn, published here https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1007902#sec025
-# the columns for this file are (after removing the last columns with geneAgeList = geneAgeList[,1:6]):
+# the columns for this file are (after removing the last columns with geneAgeListHuman = geneAgeListHuman[,1:6]):
 # (unnamed) ensembl_gene_id
 # HUGO symbol
 # seqnames --> the chromosome_name
@@ -804,127 +836,33 @@ for (i in 1:nrow(centromerePositions_mm10)) {
 ################################################
 ################################################
 
-# look here if you need to install the biomaRt library:
-# /home/marco/Dropbox/labejo/taskoj/2020/2020-02-11 confirm Caelinn and I get the same gene ids
-
-# fuera de R:
-# sudo apt-get install libssl-dev
-# sudo apt-get install libcurl4-openssl-dev
-#
-# luego:
-# BiocManager::install("biomaRt")
-
-
-library("biomaRt")
-ensembl75 = useMart(host='feb2014.archive.ensembl.org',
-						biomart='ENSEMBL_MART_ENSEMBL',
-						dataset='hsapiens_gene_ensembl')
-allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
-
-thisFolder = "/mnt/sexreg/temporal/geneage/"
-
-sampleTADFile = paste0(thisFolder, "TADs_Neu_mean_merged.bed")
-# sampleAgeFile = paste0(thisFolder, "pgen.1007902.s021.tsv") # old, given by Daniel, with no chrX
-sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-TADList = as.data.frame(read.table(sampleTADFile, header = TRUE))
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
-
-newTADList = getTADGenesTable(allBioMartHuman, TADList)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
-geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
-# ageList = getagelist(geneTADAgeTableAgeOnly) # but this has no order, so better use....
-
-ageList = as.data.frame(read.table(header = TRUE, text = "
-age
-FungiMetazoa
-Bilateria
-Chordata
-Euteleostomi
-Sarcopterygii
-Tetrapoda
-Amniota
-Mammalia
-Theria
-Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
+replacementTableMouse = as.data.frame(read.table(header = TRUE, sep = ",", text = "
+from,to
+Glires,Eutheria
+Sciurognathi,Rodentia
+Murinae,Rodentia
+Mus.musculus,Rodentia
 "))
 
-geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
-
-# View(subset(geneTADAgeTable, gene_age == "HomoPanGorilla"))
-
-# print the # of tads for every chromosome
-for (chr in c(1:22, "X", "Y")) print.noquote(paste0("chr", chr, ": ", ntad(subset(geneTADAgeTable, tad_chr == chr))), row.names = FALSE)
-
-chrTADAgeTable = getTADsWithAgePerChromosome(geneTADAgeTableAgeOnlyNoDups, ageList)
-View(chrTADAgeTable) # no X or Y, because in these data from David de Juan had been removed
-
-# set of probabilities of having a Bilateria gene, in a TAD that already has a FungiMetazoa gene
-myProbs = getColocalisationProbability(geneTADAgeTableAgeOnlyNoDups, "FungiMetazoa", "Bilateria")
-
-# si hay que instalarlo, se instala y ya:
-# install.packages("ggplot2")
-
-library(ggplot2)
-# thisPlot = ggplot(probList, aes(x = probability)) + geom_histogram(aes(y = ..density.., colour = "black", fill = "white"), colour = "black", fill = "white", bins = 20) + geom_density(alpha = 0.2, fill = "#40ff40")
-# thisPlot
-
-finalTableWith_chrX_Hominoidea_rnd3 = getManyPairData(geneTADAgeTableAgeOnlyNoDups, "Hominoidea", ageList, totRandomisations = 3, showGraph = TRUE)
-
-finalTableWith_chrX_Hominoidea = getManyPairData(geneTADAgeTableAgeOnlyNoDups, "Hominoidea", ageList, totRandomisations = 15, showGraph = TRUE)
-
-finalTableWith_chrX_Theria = getManyPairData(geneTADAgeTableAgeOnlyNoDups, "Theria", ageList, totRandomisations = 15, showGraph = TRUE)
-
-################### Zona de pruebas
-
-# para minipruebas
-ageListMini = as.data.frame(read.table(header = TRUE, text = "
-age
-Sarcopterygii
-Tetrapoda
-Theria
-Hominoidea
-"))
-myFinalList = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageListMini, totRandomisations = 3)
-MLMatrix = fromFinalListToSgnTable(myFinalList)
-write.table(MLMatrix, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table.tsv", sep = "\t")
-
-# para micropruebas
-ageListMicro = as.data.frame(read.table(header = TRUE, text = "
-age
-Tetrapoda
-Hominoidea
+replacementTableMouse_GliresRodentia = as.data.frame(read.table(header = TRUE, sep = ",", text = "
+from,to
+Glires,GliresRodentia
+Rodentia,GliresRodentia
+Sciurognathi,GliresRodentia
+Murinae,GliresRodentia
+Mus.musculus,GliresRodentia
 "))
 
-myFinalList_micro = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageListMicro, totRandomisations = 3)
-MLMatrix_micro = fromFinalListToSgnTable(myFinalList_micro)
-MLMatrix_micro_hugeTAD = fromFinalListToSgnTable(myFinalList_micro, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_micro, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_micro.tsv", sep = "\t")
-write.table(MLMatrix_micro_hugeTAD, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_micro_hugeTAD.tsv", sep = "\t")
+replacementTableHuman = as.data.frame(read.table(header = TRUE, sep = ",", text = "
+from,to
+Simiiformes,Primates
+Catarrhini,Primates
+Hominoidea,Primates
+Hominidae,Primates
+HomoPanGorilla,Primates
+HomoSapiens,Primates
+"))
 
-myFinalList = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageListMini, totRandomisations = 3)
-MLMatrix = fromFinalListToSgnTable(myFinalList)
-write.table(MLMatrix, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table.tsv", sep = "\t")
-
-finalTableWith_chrX_Hominoidea_rnd3 = getManyPairData(geneTADAgeTableAgeOnlyNoDups, "Hominoidea", ageList, totRandomisations = 3, showGraph = TRUE)
-
-################### Fin de zona de pruebas
-
-write.table(myFinalList_11abr, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_11abr.tsv", sep = "\t")
-write.table(myFinalList_11abr_hugeTAD, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_11abr_hugeTAD.tsv", sep = "\t")
-
-myFinalList_11abr = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_11abr = fromFinalListToSgnTable(myFinalList_11abr)
-MLMatrix_11abr_hugeTAD = fromFinalListToSgnTable(myFinalList_11abr, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_11abr, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_11abr.tsv", sep = "\t")
-write.table(MLMatrix_11abr_hugeTAD, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_11abr_hugeTAD.tsv", sep = "\t")
 
 
 #######################
@@ -973,223 +911,153 @@ Amniota
 Mammalia
 Theria
 Eutheria
-Glires
-Rodentia
-Sciurognathi
-Murinae
-Mus.musculus
+GliresRodentia
 "))
-
-ageListMicroMouse = as.data.frame(read.table(header = TRUE, text = "
-age
-Tetrapoda
-Rodentia
-"))
-
 
 geneTADAgeTableAgeOnlyNoDupsMouse = geneTADAgeTableAgeOnlyMouse[!duplicated(geneTADAgeTableAgeOnlyMouse[, "ensembl_gene_id"]),]
 
-# print the # of tads for every chromosome
-for (chr in c(1:22, "X", "Y")) print.noquote(paste0("chr", chr, ": ", ntad(subset(geneTADAgeTableMouse, tad_chr == chr))), row.names = FALSE)
-# not that 20, 21, and 22 should be empty for mouse
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse, 11, replacementTableMouse)
 
-chrTADAgeTableMouse = getTADsWithAgePerChromosome(geneTADAgeTableAgeOnlyNoDupsMouse, ageListMouse)
-View(chrTADAgeTableMouse) # no X or Y, because in these data from David de Juan had been removed
+####### final table, 16sep, mESC, real
+myFinalList_16sep_mESC_real = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged, ageListMouse, totRandomisations = 15)
+MLMatrix_16sep_mESC_real = fromFinalListToSgnTable(myFinalList_16sep_mESC_real)
+write.table(MLMatrix_16sep_mESC_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_mESC_real.tsv", sep = "\t")
 
-# set of probabilities of having a Bilateria gene, in a TAD that already has a FungiMetazoa gene
-# myProbsMouse = getColocalisationProbability(geneTADAgeTableAgeOnlyNoDupsMouse, "FungiMetazoa", "Bilateria", makePlot = TRUE, outputOnlyProbability = FALSE)
+MLMatrix_16sep_mESC_NH = fromFinalListToSgnTable(myFinalList_16sep_mESC_real, getHugeTADdataInstead = TRUE)
+write.table(MLMatrix_16sep_mESC_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_mESC_NH.tsv", sep = "\t")
 
-# si hay que instalarlo, se instala y ya:
-# install.packages("ggplot2")
+ageNumbers_real = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged)
+write.table(ageNumbers_real, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_mESC_real.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-library(ggplot2)
-# thisPlot = ggplot(myProbsMouse, aes(x = probability)) + geom_histogram(aes(y = ..density.., colour = "black", fill = "white"), colour = "black", fill = "white", bins = 20) + geom_density(alpha = 0.2, fill = "#40ff40")
-# thisPlot
-
-# finalTable_MousePrueba = getManyPairData(geneTADAgeTableAgeOnlyNoDupsMouse, "Rodentia", ageListMouse, totRandomisations = 3, showGraph = TRUE)
-
-####### final table, 14abr, mESC, real
-myFinalList_14abr_mESC_real = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_real = fromFinalListToSgnTable(myFinalList_14abr_mESC_real)
-write.table(MLMatrix_14abr_mESC_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_real.tsv", sep = "\t")
-
-MLMatrix_14abr_mESC_NH = fromFinalListToSgnTable(myFinalList_14abr_mESC_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mESC_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_NH.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-probDiffMatrix_14abr_mESC_real = fromFinalListToProbDiffTable(myFinalList_14abr_mESC_real)
-write.table(probDiffMatrix_14abr_mESC_real, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_mESC_real.tsv", sep = "\t")
-
-essentialMouseList = read.table("/mnt/sexreg/temporal/geneage/Mouse_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDupsMouse_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse, essentialMouseList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse, essentialMouseList, filtering = "exclusion")
-
-myFinalList_14abr_mESC_real_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_essential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_real_essential = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_essential)
-write.table(MLMatrix_14abr_mESC_real_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_real_essential.tsv", sep = "\t")
-
-myFinalList_14abr_mESC_real_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_real_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_nonEssential)
-write.table(MLMatrix_14abr_mESC_real_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_real_nonEssential.tsv", sep = "\t")
-
-MLMatrix_14abr_mESC_NH_essential = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_essential, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mESC_NH_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_NH_essential.tsv", sep = "\t")
-MLMatrix_14abr_mESC_NH_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_nonEssential, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mESC_NH_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_NH_nonEssential.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_NH_essential = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_essential))
-write.table(ageNumbers_14abr_mESC_NH_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_NH_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_mESC_NH_nonEssential = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential))
-write.table(ageNumbers_14abr_mESC_NH_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_NH_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_mESC_real_essential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_essential)
-write.table(ageNumbers_14abr_mESC_real_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_mESC_real_nonEssential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential)
-write.table(ageNumbers_14abr_mESC_real_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_essential.tsv")
-
-myFinalList_14abr_mESC_real_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_real_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_nonEssential_reduced)
-write.table(MLMatrix_14abr_mESC_real_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_real_nonEssential_reduced.tsv", sep = "\t")
-
-MLMatrix_14abr_mESC_NH_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_nonEssential_reduced, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mESC_NH_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_NH_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_real_nonEssential_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential_reduced)
-write.table(ageNumbers_14abr_mESC_real_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers_14abr_mESC_NH_nonEssential_reduced = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_nonEssential_reduced))
-write.table(ageNumbers_14abr_mESC_NH_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_NH_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+ageNumbers_NH = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged))
+write.table(ageNumbers_NH, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_mESC_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
 
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDupsMouse_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_essential.tsv")
-
-myFinalList_14abr_mESC_real_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_real_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_reduced)
-write.table(MLMatrix_14abr_mESC_real_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_real_reduced.tsv", sep = "\t")
-
-MLMatrix_14abr_mESC_NH_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_real_reduced, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mESC_NH_reduced, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_NH_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_real_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_reduced)
-write.table(ageNumbers_14abr_mESC_real_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_real_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers_14abr_mESC_NH_reduced = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_reduced))
-write.table(ageNumbers_14abr_mESC_NH_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_NH_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-####### final table, 14abr, mESC, iTR = inter TAD removed
+####### final table, 16sep, mESC, iTR = inter TAD removed
 mESCTADs_iTR = interTADRemover(mESCTADs, chromosomes_mm10)
 newTADListMouse_iTR = getTADGenesTable(allBioMartMouse, mESCTADs_iTR)
 geneTADAgeTableMouse_iTR = mergeGeneTADAge(newTADListMouse_iTR, geneAgeListMouse)
 geneTADAgeTableAgeOnlyMouse_iTR = subset(geneTADAgeTableMouse_iTR, gene_age != "No Age Provided")
 geneTADAgeTableAgeOnlyNoDupsMouse_iTR = geneTADAgeTableAgeOnlyMouse_iTR[!duplicated(geneTADAgeTableAgeOnlyMouse_iTR[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, 11, replacementTableMouse)
 
-myFinalList_14abr_mESC_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_iTR = fromFinalListToSgnTable(myFinalList_14abr_mESC_iTR)
-write.table(MLMatrix_14abr_mESC_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_iTR.tsv", sep = "\t")
+myFinalList_16sep_mESC_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR, ageListMouse, totRandomisations = 15)
+MLMatrix_16sep_mESC_iTR = fromFinalListToSgnTable(myFinalList_16sep_mESC_iTR)
+write.table(MLMatrix_16sep_mESC_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_mESC_iTR.tsv", sep = "\t")
 
-probDiffMatrix_14abr_mESC_iTR = fromFinalListToProbDiffTable(myFinalList_14abr_mESC_iTR)
-write.table(probDiffMatrix_14abr_mESC_iTR, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_mESC_iTR.tsv", sep = "\t")
+ageNumbers_16sep_mESC_iTR = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR)
+write.table(ageNumbers_16sep_mESC_iTR, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_mESC_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-essentialMouseList = read.table("/mnt/sexreg/temporal/geneage/Mouse_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDupsMouse_iTR_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, essentialMouseList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, essentialMouseList, filtering = "exclusion")
-
-myFinalList_14abr_mESC_iTR_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_iTR_essential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_iTR_essential = fromFinalListToSgnTable(myFinalList_14abr_mESC_iTR_essential)
-write.table(MLMatrix_14abr_mESC_iTR_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_iTR_essential.tsv", sep = "\t")
-
-
-myFinalList_14abr_mESC_iTR_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_iTR_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_mESC_iTR_nonEssential)
-write.table(MLMatrix_14abr_mESC_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_iTR_nonEssential.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_iTR_essential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_iTR_essential)
-write.table(ageNumbers_14abr_mESC_iTR_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_mESC_iTR_nonEssential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential)
-write.table(ageNumbers_14abr_mESC_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_essential.tsv")
-
-myFinalList_14abr_mESC_iTR_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_iTR_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_iTR_nonEssential_reduced)
-write.table(MLMatrix_14abr_mESC_iTR_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_iTR_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_iTR_nonEssential_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_iTR_nonEssential_reduced)
-write.table(ageNumbers_14abr_mESC_iTR_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDupsMouse_iTR_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_essential.tsv")
-
-myFinalList_14abr_mESC_iTR_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_iTR_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_iTR_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_iTR_reduced)
-write.table(MLMatrix_14abr_mESC_iTR_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_iTR_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_iTR_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_iTR_reduced)
-write.table(ageNumbers_14abr_mESC_iTR_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_iTR_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, mESC, fused = fused TADs
+####### final table, 16sep, mESC, fused = fused TADs
 mESCTADs_fused = fusedTAD(mESCTADs, chromosomes_mm10)
 newTADListMouse_fused = getTADGenesTable(allBioMartMouse, mESCTADs_fused)
 geneTADAgeTableMouse_fused = mergeGeneTADAge(newTADListMouse_fused, geneAgeListMouse)
 geneTADAgeTableAgeOnlyMouse_fused = subset(geneTADAgeTableMouse_fused, gene_age != "No Age Provided")
 geneTADAgeTableAgeOnlyNoDupsMouse_fused = geneTADAgeTableAgeOnlyMouse_fused[!duplicated(geneTADAgeTableAgeOnlyMouse_fused[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse_fused, 11, replacementTableMouse)
 
-myFinalList_14abr_mESC_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_fused, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_fused = fromFinalListToSgnTable(myFinalList_14abr_mESC_fused)
-write.table(MLMatrix_14abr_mESC_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_fused.tsv", sep = "\t")
+myFinalList_16sep_mESC_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused, ageListMouse, totRandomisations = 15)
+MLMatrix_16sep_mESC_fused = fromFinalListToSgnTable(myFinalList_16sep_mESC_fused)
+write.table(MLMatrix_16sep_mESC_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_mESC_fused.tsv", sep = "\t")
 
-probDiffMatrix_14abr_mESC_fused = fromFinalListToProbDiffTable(myFinalList_14abr_mESC_fused)
-write.table(probDiffMatrix_14abr_mESC_fused, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_mESC_fused.tsv", sep = "\t")
+ageNumbers_16sep_mESC_fused = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused)
+write.table(ageNumbers_16sep_mESC_fused, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_mESC_fused.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-essentialMouseList = read.table("/mnt/sexreg/temporal/geneage/Mouse_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDupsMouse_fused_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse_fused, essentialMouseList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDupsMouse_fused, essentialMouseList, filtering = "exclusion")
+#######################
+#######################
+####################### MOUSE ZONE GliresRodentia
+#######################
+#######################
 
-myFinalList_14abr_mESC_fused_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_fused_essential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_fused_essential = fromFinalListToSgnTable(myFinalList_14abr_mESC_fused_essential)
-write.table(MLMatrix_14abr_mESC_fused_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_fused_essential.tsv", sep = "\t")
+# I have checked that mm10 is equivalent to the feb2014 build also in mouse:
+# see http://www.ensembl.org/Help/ArchiveRedirect?src=http%3A%2F%2Fjul2012.archive.ensembl.org%2F
+library("biomaRt")
+ensemblMouse = useMart(host='feb2014.archive.ensembl.org',
+						biomart='ENSEMBL_MART_ENSEMBL',
+						dataset='mmusculus_gene_ensembl')
+allBioMartMouse = getBM(mart = ensemblMouse, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
 
+thisFolder = "/mnt/sexreg/temporal/geneage/"
 
-myFinalList_14abr_mESC_fused_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_fused_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_mESC_fused_nonEssential)
-write.table(MLMatrix_14abr_mESC_fused_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mESC_fused_nonEssential.tsv", sep = "\t")
+mESCTADs = read.table("/mnt/sexreg/ChromHMM/TADs/tsv/mESCTADs.tsv")
+mESCTADs$chr = substr(mESCTADs$chr, 4, length(mESCTADs$chr) - 3)
 
-ageNumbers_14abr_mESC_fused_essential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_fused_essential)
-write.table(ageNumbers_14abr_mESC_fused_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_mESC_fused_nonEssential = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential)
-write.table(ageNumbers_14abr_mESC_fused_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+sampleAgeFileMouse = paste0(thisFolder, "MiceAges_MTH.tsv")
+# from Caelinn's email of 16mar-2020, file "MiceAges.txt", changing only Fungi-Metazoa_group to FungiMetazoa
 
-
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_essential.tsv")
-
-myFinalList_14abr_mESC_fused_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_fused_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_fused_nonEssential_reduced)
-write.table(MLMatrix_14abr_mESC_fused_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_fused_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_mESC_fused_nonEssential_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_fused_nonEssential_reduced)
-write.table(ageNumbers_14abr_mESC_fused_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+geneAgeListMousePre = as.data.frame(read.table(sampleAgeFileMouse, header = TRUE, sep = "\t"))
+geneAgeListMouse = as.data.frame(cbind(ensembl_gene_id = as.character(geneAgeListMousePre$GeneID), HUGO_symbol = NA, seqnames = NA, start = NA, end = NA, GeneAge = as.character(geneAgeListMousePre$GeneAge)))
 
 
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDupsMouse_fused_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDupsMouse_fused, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_essential.tsv")
+newTADListMouse = getTADGenesTable(allBioMartMouse, mESCTADs)
+geneTADAgeTableMouse = mergeGeneTADAge(newTADListMouse, geneAgeListMouse)
+geneTADAgeTableAgeOnlyMouse = subset(geneTADAgeTableMouse, gene_age != "No Age Provided")
+# ageList = getagelist(geneTADAgeTableAgeOnlyMouse) # but this has no order, so better use....
 
-myFinalList_14abr_mESC_fused_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_fused_reduced, ageListMouse, totRandomisations = 15)
-MLMatrix_14abr_mESC_fused_reduced = fromFinalListToSgnTable(myFinalList_14abr_mESC_fused_reduced)
-write.table(MLMatrix_14abr_mESC_fused_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_mESC_fused_reduced.tsv", sep = "\t")
+ageListMouse = as.data.frame(read.table(header = TRUE, text = "
+age
+FungiMetazoa
+Bilateria
+Chordata
+Euteleostomi
+Sarcopterygii
+Tetrapoda
+Amniota
+Mammalia
+Theria
+Eutheria
+GliresRodentia
+"))
 
-ageNumbers_14abr_mESC_fused_reduced = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_fused_reduced)
-write.table(ageNumbers_14abr_mESC_fused_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mESC_fused_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+geneTADAgeTableAgeOnlyNoDupsMouse = geneTADAgeTableAgeOnlyMouse[!duplicated(geneTADAgeTableAgeOnlyMouse[, "ensembl_gene_id"]),]
+
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse, 11, replacementTableMouse_GliresRodentia)
+
+####### final table, 05oct, mESC, real
+myFinalList_05oct_mESC_real = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged, ageListMouse, totRandomisations = 15)
+MLMatrix_05oct_mESC_real = fromFinalListToSgnTable(myFinalList_05oct_mESC_real)
+write.table(MLMatrix_05oct_mESC_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_05oct_mESC_real.tsv", sep = "\t")
+
+MLMatrix_05oct_mESC_NH = fromFinalListToSgnTable(myFinalList_05oct_mESC_real, getHugeTADdataInstead = TRUE)
+write.table(MLMatrix_05oct_mESC_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_05oct_mESC_NH.tsv", sep = "\t")
+
+ageNumbers_real = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged)
+write.table(ageNumbers_real, "/mnt/sexreg/temporal/geneage/ageNumbers_05oct_mESC_real.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+ageNumbers_NH = ngeneInAge(ageListMouse, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged))
+write.table(ageNumbers_NH, "/mnt/sexreg/temporal/geneage/ageNumbers_05oct_mESC_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+
+####### final table, 05oct, mESC, iTR = inter TAD removed
+mESCTADs_iTR = interTADRemover(mESCTADs, chromosomes_mm10)
+newTADListMouse_iTR = getTADGenesTable(allBioMartMouse, mESCTADs_iTR)
+geneTADAgeTableMouse_iTR = mergeGeneTADAge(newTADListMouse_iTR, geneAgeListMouse)
+geneTADAgeTableAgeOnlyMouse_iTR = subset(geneTADAgeTableMouse_iTR, gene_age != "No Age Provided")
+geneTADAgeTableAgeOnlyNoDupsMouse_iTR = geneTADAgeTableAgeOnlyMouse_iTR[!duplicated(geneTADAgeTableAgeOnlyMouse_iTR[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse_iTR, 11, replacementTableMouse_GliresRodentia)
+
+myFinalList_05oct_mESC_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR, ageListMouse, totRandomisations = 15)
+MLMatrix_05oct_mESC_iTR = fromFinalListToSgnTable(myFinalList_05oct_mESC_iTR)
+write.table(MLMatrix_05oct_mESC_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_05oct_mESC_iTR.tsv", sep = "\t")
+
+ageNumbers_05oct_mESC_iTR = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_iTR)
+write.table(ageNumbers_05oct_mESC_iTR, "/mnt/sexreg/temporal/geneage/ageNumbers_05oct_mESC_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+####### final table, 05oct, mESC, fused = fused TADs
+mESCTADs_fused = fusedTAD(mESCTADs, chromosomes_mm10)
+newTADListMouse_fused = getTADGenesTable(allBioMartMouse, mESCTADs_fused)
+geneTADAgeTableMouse_fused = mergeGeneTADAge(newTADListMouse_fused, geneAgeListMouse)
+geneTADAgeTableAgeOnlyMouse_fused = subset(geneTADAgeTableMouse_fused, gene_age != "No Age Provided")
+geneTADAgeTableAgeOnlyNoDupsMouse_fused = geneTADAgeTableAgeOnlyMouse_fused[!duplicated(geneTADAgeTableAgeOnlyMouse_fused[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse_fused, 11, replacementTableMouse_GliresRodentia)
+
+myFinalList_05oct_mESC_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused, ageListMouse, totRandomisations = 15)
+MLMatrix_05oct_mESC_fused = fromFinalListToSgnTable(myFinalList_05oct_mESC_fused)
+write.table(MLMatrix_05oct_mESC_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_05oct_mESC_fused.tsv", sep = "\t")
+
+ageNumbers_05oct_mESC_fused = ngeneInAge(ageListMouse, geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_fused)
+write.table(ageNumbers_05oct_mESC_fused, "/mnt/sexreg/temporal/geneage/ageNumbers_05oct_mESC_fused.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
 
 #######################
 #######################
@@ -1211,16 +1079,16 @@ allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wik
 
 thisFolder = "/mnt/sexreg/temporal/geneage/"
 sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
+geneAgeListHuman = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
+colnames(geneAgeListHuman) = c("ensembl_gene_id", colnames(geneAgeListHuman)[2:6])
+geneAgeListHuman = geneAgeListHuman[,1:6]
 
 newTADList = getTADGenesTable(allBioMartHuman, hESCTADs)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
+geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeListHuman)
 geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
 geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
 
-ageList = as.data.frame(read.table(header = TRUE, text = "
+ageListHuman = as.data.frame(read.table(header = TRUE, text = "
 age
 FungiMetazoa
 Bilateria
@@ -1232,215 +1100,71 @@ Amniota
 Mammalia
 Theria
 Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
+Primates
 "))
 
+geneTADAgeTableAgeOnlyHuman = geneTADAgeTableAgeOnly
 
-####### final table, 14abr, hESC, real
-myFinalList_14abr_hESC_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_real = fromFinalListToSgnTable(myFinalList_14abr_hESC_real)
-write.table(MLMatrix_14abr_hESC_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_real.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsHuman = geneTADAgeTableAgeOnlyHuman[!duplicated(geneTADAgeTableAgeOnlyHuman[, "ensembl_gene_id"]),]
 
-MLMatrix_14abr_hESC_NH = fromFinalListToSgnTable(myFinalList_14abr_hESC_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_hESC_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_NH.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged = replaceAges(geneTADAgeTableAgeOnlyNoDupsHuman, 11, replacementTableHuman)
 
-ageNumbers = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+####### final table, 16sep, hESC, real
+myFinalList_16sep_hESC_real = getAllPairData(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged, ageListHuman, totRandomisations = 15)
+MLMatrix_16sep_hESC_real = fromFinalListToSgnTable(myFinalList_16sep_hESC_real)
+write.table(MLMatrix_16sep_hESC_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_hESC_real.tsv", sep = "\t")
 
-probDiffMatrix_14abr_hESC_real = fromFinalListToProbDiffTable(myFinalList_14abr_hESC_real)
-write.table(probDiffMatrix_14abr_hESC_real, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_hESC_real.tsv", sep = "\t")
+MLMatrix_16sep_hESC_NH = fromFinalListToSgnTable(myFinalList_16sep_hESC_real, getHugeTADdataInstead = TRUE)
+write.table(MLMatrix_16sep_hESC_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_hESC_NH.tsv", sep = "\t")
 
-essentialList = read.table("/mnt/sexreg/temporal/geneage/Human_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDups_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups, essentialList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDups_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups, essentialList, filtering = "exclusion")
+ageNumbers_real = ngeneInAge(ageListHuman, geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged)
+write.table(ageNumbers_real, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_hESC_real.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-myFinalList_14abr_hESC_real_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_essential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_real_essential = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_essential)
-write.table(MLMatrix_14abr_hESC_real_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_real_essential.tsv", sep = "\t")
+ageNumbers_NH = ngeneInAge(ageListHuman, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged))
+write.table(ageNumbers_NH, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_hESC_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
 
-myFinalList_14abr_hESC_real_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_nonEssential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_real_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_nonEssential)
-write.table(MLMatrix_14abr_hESC_real_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_real_nonEssential.tsv", sep = "\t")
-
-MLMatrix_14abr_hESC_NH_essential = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_essential, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_hESC_NH_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_NH_essential.tsv", sep = "\t")
-MLMatrix_14abr_hESC_NH_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_nonEssential, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_hESC_NH_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_NH_nonEssential.tsv", sep = "\t")
-
-
-ageNumbers_14abr_hESC_NH_essential = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups_essential))
-write.table(ageNumbers_14abr_hESC_NH_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_NH_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_hESC_NH_nonEssential = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups_nonEssential))
-write.table(ageNumbers_14abr_hESC_NH_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_NH_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_hESC_real_essential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_essential)
-write.table(ageNumbers_14abr_hESC_real_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_hESC_real_nonEssential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_nonEssential)
-write.table(ageNumbers_14abr_hESC_real_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-
-
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDups_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_essential.tsv")
-
-myFinalList_14abr_hESC_real_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_nonEssential_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_real_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_nonEssential_reduced)
-write.table(MLMatrix_14abr_hESC_real_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_real_nonEssential_reduced.tsv", sep = "\t")
-
-MLMatrix_14abr_hESC_NH_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_nonEssential_reduced, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_hESC_NH_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_NH_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_real_nonEssential_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_nonEssential_reduced)
-write.table(ageNumbers_14abr_hESC_real_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers_14abr_hESC_NH_nonEssential_reduced = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups_nonEssential_reduced))
-write.table(ageNumbers_14abr_hESC_NH_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_NH_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDups_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_essential.tsv")
-
-myFinalList_14abr_hESC_real_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_real_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_reduced)
-write.table(MLMatrix_14abr_hESC_real_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_real_reduced.tsv", sep = "\t")
-
-MLMatrix_14abr_hESC_NH_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_real_reduced, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_hESC_NH_reduced, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_NH_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_real_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_reduced)
-write.table(ageNumbers_14abr_hESC_real_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_real_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers_14abr_hESC_NH_reduced = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups_reduced))
-write.table(ageNumbers_14abr_hESC_NH_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_NH_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, hESC, iTR = inter TAD removed
+####### final table, 16sep, hESC, iTR = inter TAD removed
 hESCTADs_iTR = interTADRemover(hESCTADs, chromosomes_hg19)
-newTADList_iTR = getTADGenesTable(allBioMartHuman, hESCTADs_iTR)
-geneTADAgeTable_iTR = mergeGeneTADAge(newTADList_iTR, geneAgeList)
-geneTADAgeTableAgeOnly_iTR = subset(geneTADAgeTable_iTR, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_iTR = geneTADAgeTableAgeOnly_iTR[!duplicated(geneTADAgeTableAgeOnly_iTR[, "ensembl_gene_id"]),]
+newTADListHuman_iTR = getTADGenesTable(allBioMartHuman, hESCTADs_iTR)
+geneTADAgeTableHuman_iTR = mergeGeneTADAge(newTADListHuman_iTR, geneAgeListHuman)
+geneTADAgeTableAgeOnlyHuman_iTR = subset(geneTADAgeTableHuman_iTR, gene_age != "No Age Provided")
+geneTADAgeTableAgeOnlyNoDupsHuman_iTR = geneTADAgeTableAgeOnlyHuman_iTR[!duplicated(geneTADAgeTableAgeOnlyHuman_iTR[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_iTR = replaceAges(geneTADAgeTableAgeOnlyNoDupsHuman_iTR, 11, replacementTableHuman)
 
-myFinalList_14abr_hESC_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_iTR = fromFinalListToSgnTable(myFinalList_14abr_hESC_iTR)
-write.table(MLMatrix_14abr_hESC_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_iTR.tsv", sep = "\t")
+myFinalList_16sep_hESC_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_iTR, ageListHuman, totRandomisations = 15)
+MLMatrix_16sep_hESC_iTR = fromFinalListToSgnTable(myFinalList_16sep_hESC_iTR)
+write.table(MLMatrix_16sep_hESC_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_hESC_iTR.tsv", sep = "\t")
 
-probDiffMatrix_14abr_hESC_iTR = fromFinalListToProbDiffTable(myFinalList_14abr_hESC_iTR)
-write.table(probDiffMatrix_14abr_hESC_iTR, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_hESC_iTR.tsv", sep = "\t")
+ageNumbers_16sep_hESC_iTR = ngeneInAge(ageListHuman, geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_iTR)
+write.table(ageNumbers_16sep_hESC_iTR, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_hESC_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-
-essentialList = read.table("/mnt/sexreg/temporal/geneage/Human_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDups_iTR_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups_iTR, essentialList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups_iTR, essentialList, filtering = "exclusion")
-
-myFinalList_14abr_hESC_iTR_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR_essential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_iTR_essential = fromFinalListToSgnTable(myFinalList_14abr_hESC_iTR_essential)
-write.table(MLMatrix_14abr_hESC_iTR_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_iTR_essential.tsv", sep = "\t")
-
-
-myFinalList_14abr_hESC_iTR_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_iTR_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_hESC_iTR_nonEssential)
-write.table(MLMatrix_14abr_hESC_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_iTR_nonEssential.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_iTR_essential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR_essential)
-write.table(ageNumbers_14abr_hESC_iTR_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_hESC_iTR_nonEssential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential)
-write.table(ageNumbers_14abr_hESC_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_essential.tsv")
-
-myFinalList_14abr_hESC_iTR_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_iTR_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_iTR_nonEssential_reduced)
-write.table(MLMatrix_14abr_hESC_iTR_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_iTR_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_iTR_nonEssential_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR_nonEssential_reduced)
-write.table(ageNumbers_14abr_hESC_iTR_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDups_iTR_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups_iTR, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_essential.tsv")
-
-myFinalList_14abr_hESC_iTR_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_iTR_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_iTR_reduced)
-write.table(MLMatrix_14abr_hESC_iTR_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_iTR_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_iTR_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR_reduced)
-write.table(ageNumbers_14abr_hESC_iTR_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-####### final table, 14abr, hESC, fused = fused TADs
+####### final table, 16sep, hESC, fused = fused TADs
 hESCTADs_fused = fusedTAD(hESCTADs, chromosomes_hg19)
-newTADList_fused = getTADGenesTable(allBioMartHuman, hESCTADs_fused)
-geneTADAgeTable_fused = mergeGeneTADAge(newTADList_fused, geneAgeList)
-geneTADAgeTableAgeOnly_fused = subset(geneTADAgeTable_fused, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_fused = geneTADAgeTableAgeOnly_fused[!duplicated(geneTADAgeTableAgeOnly_fused[, "ensembl_gene_id"]),]
+newTADListHuman_fused = getTADGenesTable(allBioMartHuman, hESCTADs_fused)
+geneTADAgeTableHuman_fused = mergeGeneTADAge(newTADListHuman_fused, geneAgeListHuman)
+geneTADAgeTableAgeOnlyHuman_fused = subset(geneTADAgeTableHuman_fused, gene_age != "No Age Provided")
+geneTADAgeTableAgeOnlyNoDupsHuman_fused = geneTADAgeTableAgeOnlyHuman_fused[!duplicated(geneTADAgeTableAgeOnlyHuman_fused[, "ensembl_gene_id"]),]
+geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_fused = replaceAges(geneTADAgeTableAgeOnlyNoDupsHuman_fused, 11, replacementTableHuman)
 
-myFinalList_14abr_hESC_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_fused = fromFinalListToSgnTable(myFinalList_14abr_hESC_fused)
-write.table(MLMatrix_14abr_hESC_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_fused.tsv", sep = "\t")
+myFinalList_16sep_hESC_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_fused, ageListHuman, totRandomisations = 15)
+MLMatrix_16sep_hESC_fused = fromFinalListToSgnTable(myFinalList_16sep_hESC_fused)
+write.table(MLMatrix_16sep_hESC_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_hESC_fused.tsv", sep = "\t")
 
-probDiffMatrix_14abr_hESC_fused = fromFinalListToProbDiffTable(myFinalList_14abr_hESC_fused)
-write.table(probDiffMatrix_14abr_hESC_fused, "/mnt/sexreg/temporal/geneage/probDiffRatio_table_14abr_hESC_fused.tsv", sep = "\t")
+ageNumbers_16sep_hESC_fused = ngeneInAge(ageListHuman, geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_fused)
+write.table(ageNumbers_16sep_hESC_fused, "/mnt/sexreg/temporal/geneage/ageNumbers_16sep_hESC_fused.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
-essentialList = read.table("/mnt/sexreg/temporal/geneage/Human_Essential.txt", header = FALSE, sep = "\t")
-geneTADAgeTableAgeOnlyNoDups_fused_essential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups_fused, essentialList, filtering = "inclusion")
-geneTADAgeTableAgeOnlyNoDups_fused_nonEssential = filterTableWithList(geneTADAgeTableAgeOnlyNoDups_fused, essentialList, filtering = "exclusion")
-
-myFinalList_14abr_hESC_fused_essential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused_essential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_fused_essential = fromFinalListToSgnTable(myFinalList_14abr_hESC_fused_essential)
-write.table(MLMatrix_14abr_hESC_fused_essential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_fused_essential.tsv", sep = "\t")
-
-
-myFinalList_14abr_hESC_fused_nonEssential = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused_nonEssential, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_fused_nonEssential = fromFinalListToSgnTable(myFinalList_14abr_hESC_fused_nonEssential)
-write.table(MLMatrix_14abr_hESC_fused_nonEssential, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_hESC_fused_nonEssential.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_fused_essential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused_essential)
-write.table(ageNumbers_14abr_hESC_fused_essential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_essential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-ageNumbers_14abr_hESC_fused_nonEssential = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused_nonEssential)
-write.table(ageNumbers_14abr_hESC_fused_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_nonEssential.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-
-
-# repeating reducing the number of genes to check bias
-geneTADAgeTableAgeOnlyNoDups_fused_nonEssential_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups_fused_nonEssential, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_essential.tsv")
-
-myFinalList_14abr_hESC_fused_nonEssential_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused_nonEssential_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_fused_nonEssential_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_fused_nonEssential_reduced)
-write.table(MLMatrix_14abr_hESC_fused_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_fused_nonEssential_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_fused_nonEssential_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused_nonEssential_reduced)
-write.table(ageNumbers_14abr_hESC_fused_nonEssential_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_nonEssential_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-# repeating reducing the number of genes to check bias - basic
-geneTADAgeTableAgeOnlyNoDups_fused_reduced = tableReducer(geneTADAgeTableAgeOnlyNoDups_fused, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_essential.tsv")
-
-myFinalList_14abr_hESC_fused_reduced = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused_reduced, ageList, totRandomisations = 15)
-MLMatrix_14abr_hESC_fused_reduced = fromFinalListToSgnTable(myFinalList_14abr_hESC_fused_reduced)
-write.table(MLMatrix_14abr_hESC_fused_reduced, "/mnt/sexreg/temporal/geneage/minus_LogPValueSgn_table_14abr_hESC_fused_reduced.tsv", sep = "\t")
-
-ageNumbers_14abr_hESC_fused_reduced = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused_reduced)
-write.table(ageNumbers_14abr_hESC_fused_reduced, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_fused_reduced.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
 #######################
 #######################
 #######################
-####################### neu ZONE
+####################### hESC ZONE rndAge
 #######################
 #######################
 
-neuTADs = read.table("/mnt/sexreg/temporal/geneage/TADs_Neu_mean_merged.bed", header = TRUE)
+hESCTADs = read.table("/mnt/sexreg/ChromHMM/TADs/tsv/hESCTADs.tsv")
+hESCTADs$chr = substr(hESCTADs$chr, 4, length(hESCTADs$chr) - 3)
+
 
 library(ggplot2)
 library("biomaRt")
@@ -1451,16 +1175,16 @@ allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wik
 
 thisFolder = "/mnt/sexreg/temporal/geneage/"
 sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
+geneAgeListHuman = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
+colnames(geneAgeListHuman) = c("ensembl_gene_id", colnames(geneAgeListHuman)[2:6])
+geneAgeListHuman = geneAgeListHuman[,1:6]
 
-newTADList = getTADGenesTable(allBioMartHuman, neuTADs)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
+newTADList = getTADGenesTable(allBioMartHuman, hESCTADs)
+geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeListHuman)
 geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
 geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
 
-ageList = as.data.frame(read.table(header = TRUE, text = "
+ageListHuman = as.data.frame(read.table(header = TRUE, text = "
 age
 FungiMetazoa
 Bilateria
@@ -1472,78 +1196,54 @@ Amniota
 Mammalia
 Theria
 Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
+Primates
 "))
 
+geneTADAgeTableAgeOnlyHuman = geneTADAgeTableAgeOnly
 
-####### final table, 14abr, neu, real
-myFinalList_14abr_neu_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_14abr_neu_real = fromFinalListToSgnTable(myFinalList_14abr_neu_real)
-write.table(MLMatrix_14abr_neu_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_neu_real.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsHuman = geneTADAgeTableAgeOnlyHuman[!duplicated(geneTADAgeTableAgeOnlyHuman[, "ensembl_gene_id"]),]
 
-MLMatrix_14abr_neu_NH = fromFinalListToSgnTable(myFinalList_14abr_neu_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_neu_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_neu_NH.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged = replaceAges(geneTADAgeTableAgeOnlyNoDupsHuman, 11, replacementTableHuman)
 
-ageNumbers = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_neu_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged, "gene_age")
 
-####### final table, 14abr, neu, iTR = inter TAD removed
-neuTADs_iTR = interTADRemover(neuTADs, chromosomes_hg19)
-newTADList_iTR = getTADGenesTable(allBioMartHuman, neuTADs_iTR)
-geneTADAgeTable_iTR = mergeGeneTADAge(newTADList_iTR, geneAgeList)
-geneTADAgeTableAgeOnly_iTR = subset(geneTADAgeTable_iTR, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_iTR = geneTADAgeTableAgeOnly_iTR[!duplicated(geneTADAgeTableAgeOnly_iTR[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_neu_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR, ageList, totRandomisations = 15)
-MLMatrix_14abr_neu_iTR = fromFinalListToSgnTable(myFinalList_14abr_neu_iTR)
-write.table(MLMatrix_14abr_neu_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_neu_iTR.tsv", sep = "\t")
-
-####### final table, 14abr, neu, fused = fused TADs
-neuTADs_fused = fusedTAD(neuTADs, chromosomes_hg19)
-newTADList_fused = getTADGenesTable(allBioMartHuman, neuTADs_fused)
-geneTADAgeTable_fused = mergeGeneTADAge(newTADList_fused, geneAgeList)
-geneTADAgeTableAgeOnly_fused = subset(geneTADAgeTable_fused, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_fused = geneTADAgeTableAgeOnly_fused[!duplicated(geneTADAgeTableAgeOnly_fused[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_neu_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused, ageList, totRandomisations = 15)
-MLMatrix_14abr_neu_fused = fromFinalListToSgnTable(myFinalList_14abr_neu_fused)
-write.table(MLMatrix_14abr_neu_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_neu_fused.tsv", sep = "\t")
-
-
+####### final table, 16sep, hESC, rndAge
+myFinalList_16sep_hESC_rndAge = getAllPairData(geneTADAgeTableAgeOnlyNoDupsHuman_PrimatesMerged_rndAge, ageListHuman, totRandomisations = 15)
+MLMatrix_16sep_hESC_rndAge = fromFinalListToSgnTable(myFinalList_16sep_hESC_rndAge)
+write.table(MLMatrix_16sep_hESC_rndAge, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_16sep_hESC_rndAge.tsv", sep = "\t")
 
 #######################
 #######################
-#######################
-####################### nCD4 ZONE
+####################### MOUSE ZONE GliresRodentia rndAge
 #######################
 #######################
 
-nCD4TADs = read.table("/mnt/sexreg/temporal/geneage/TADs_nCD4_mean_merged.bed", header = TRUE)
-
-library(ggplot2)
+# I have checked that mm10 is equivalent to the feb2014 build also in mouse:
+# see http://www.ensembl.org/Help/ArchiveRedirect?src=http%3A%2F%2Fjul2012.archive.ensembl.org%2F
 library("biomaRt")
-ensembl75 = useMart(host='feb2014.archive.ensembl.org',
+ensemblMouse = useMart(host='feb2014.archive.ensembl.org',
 						biomart='ENSEMBL_MART_ENSEMBL',
-						dataset='hsapiens_gene_ensembl')
-allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
+						dataset='mmusculus_gene_ensembl')
+allBioMartMouse = getBM(mart = ensemblMouse, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
 
 thisFolder = "/mnt/sexreg/temporal/geneage/"
-sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
 
-newTADList = getTADGenesTable(allBioMartHuman, nCD4TADs)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
-geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
+mESCTADs = read.table("/mnt/sexreg/ChromHMM/TADs/tsv/mESCTADs.tsv")
+mESCTADs$chr = substr(mESCTADs$chr, 4, length(mESCTADs$chr) - 3)
 
-ageList = as.data.frame(read.table(header = TRUE, text = "
+sampleAgeFileMouse = paste0(thisFolder, "MiceAges_MTH.tsv")
+# from Caelinn's email of 16mar-2020, file "MiceAges.txt", changing only Fungi-Metazoa_group to FungiMetazoa
+
+geneAgeListMousePre = as.data.frame(read.table(sampleAgeFileMouse, header = TRUE, sep = "\t"))
+geneAgeListMouse = as.data.frame(cbind(ensembl_gene_id = as.character(geneAgeListMousePre$GeneID), HUGO_symbol = NA, seqnames = NA, start = NA, end = NA, GeneAge = as.character(geneAgeListMousePre$GeneAge)))
+
+
+newTADListMouse = getTADGenesTable(allBioMartMouse, mESCTADs)
+geneTADAgeTableMouse = mergeGeneTADAge(newTADListMouse, geneAgeListMouse)
+geneTADAgeTableAgeOnlyMouse = subset(geneTADAgeTableMouse, gene_age != "No Age Provided")
+# ageList = getagelist(geneTADAgeTableAgeOnlyMouse) # but this has no order, so better use....
+
+ageListMouse = as.data.frame(read.table(header = TRUE, text = "
 age
 FungiMetazoa
 Bilateria
@@ -1555,229 +1255,16 @@ Amniota
 Mammalia
 Theria
 Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
+GliresRodentia
 "))
 
+geneTADAgeTableAgeOnlyNoDupsMouse = geneTADAgeTableAgeOnlyMouse[!duplicated(geneTADAgeTableAgeOnlyMouse[, "ensembl_gene_id"]),]
 
-####### final table, 14abr, nCD4, real
-myFinalList_14abr_nCD4_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_14abr_nCD4_real = fromFinalListToSgnTable(myFinalList_14abr_nCD4_real)
-write.table(MLMatrix_14abr_nCD4_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_nCD4_real.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged = replaceAges(geneTADAgeTableAgeOnlyNoDupsMouse, 11, replacementTableMouse_GliresRodentia)
 
-MLMatrix_14abr_nCD4_NH = fromFinalListToSgnTable(myFinalList_14abr_nCD4_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_nCD4_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_nCD4_NH.tsv", sep = "\t")
+geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged, "gene_age")
 
-ageNumbers = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_nCD4_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, nCD4, iTR = inter TAD removed
-nCD4TADs_iTR = interTADRemover(nCD4TADs, chromosomes_hg19)
-newTADList_iTR = getTADGenesTable(allBioMartHuman, nCD4TADs_iTR)
-geneTADAgeTable_iTR = mergeGeneTADAge(newTADList_iTR, geneAgeList)
-geneTADAgeTableAgeOnly_iTR = subset(geneTADAgeTable_iTR, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_iTR = geneTADAgeTableAgeOnly_iTR[!duplicated(geneTADAgeTableAgeOnly_iTR[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_nCD4_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR, ageList, totRandomisations = 15)
-MLMatrix_14abr_nCD4_iTR = fromFinalListToSgnTable(myFinalList_14abr_nCD4_iTR)
-write.table(MLMatrix_14abr_nCD4_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_nCD4_iTR.tsv", sep = "\t")
-
-####### final table, 14abr, nCD4, fused = fused TADs
-nCD4TADs_fused = fusedTAD(nCD4TADs, chromosomes_hg19)
-newTADList_fused = getTADGenesTable(allBioMartHuman, nCD4TADs_fused)
-geneTADAgeTable_fused = mergeGeneTADAge(newTADList_fused, geneAgeList)
-geneTADAgeTableAgeOnly_fused = subset(geneTADAgeTable_fused, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_fused = geneTADAgeTableAgeOnly_fused[!duplicated(geneTADAgeTableAgeOnly_fused[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_nCD4_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused, ageList, totRandomisations = 15)
-MLMatrix_14abr_nCD4_fused = fromFinalListToSgnTable(myFinalList_14abr_nCD4_fused)
-write.table(MLMatrix_14abr_nCD4_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_nCD4_fused.tsv", sep = "\t")
-
-
-
-
-#######################
-#######################
-#######################
-####################### mon ZONE
-#######################
-#######################
-
-monTADs = read.table("/mnt/sexreg/temporal/geneage/TADs_Mon_mean_merged.bed", header = TRUE)
-
-library(ggplot2)
-library("biomaRt")
-ensembl75 = useMart(host='feb2014.archive.ensembl.org',
-						biomart='ENSEMBL_MART_ENSEMBL',
-						dataset='hsapiens_gene_ensembl')
-allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
-
-thisFolder = "/mnt/sexreg/temporal/geneage/"
-sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
-
-newTADList = getTADGenesTable(allBioMartHuman, monTADs)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
-geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
-
-ageList = as.data.frame(read.table(header = TRUE, text = "
-age
-FungiMetazoa
-Bilateria
-Chordata
-Euteleostomi
-Sarcopterygii
-Tetrapoda
-Amniota
-Mammalia
-Theria
-Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
-"))
-
-
-####### final table, 14abr, mon, real
-myFinalList_14abr_mon_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_14abr_mon_real = fromFinalListToSgnTable(myFinalList_14abr_mon_real)
-write.table(MLMatrix_14abr_mon_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mon_real.tsv", sep = "\t")
-
-MLMatrix_14abr_mon_NH = fromFinalListToSgnTable(myFinalList_14abr_mon_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_mon_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mon_NH.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mon_real.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mon_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, mon, iTR = inter TAD removed
-monTADs_iTR = interTADRemover(monTADs, chromosomes_hg19)
-newTADList_iTR = getTADGenesTable(allBioMartHuman, monTADs_iTR)
-geneTADAgeTable_iTR = mergeGeneTADAge(newTADList_iTR, geneAgeList)
-geneTADAgeTableAgeOnly_iTR = subset(geneTADAgeTable_iTR, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_iTR = geneTADAgeTableAgeOnly_iTR[!duplicated(geneTADAgeTableAgeOnly_iTR[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_mon_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR, ageList, totRandomisations = 15)
-MLMatrix_14abr_mon_iTR = fromFinalListToSgnTable(myFinalList_14abr_mon_iTR)
-write.table(MLMatrix_14abr_mon_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mon_iTR.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mon_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, mon, fused = fused TADs
-monTADs_fused = fusedTAD(monTADs, chromosomes_hg19)
-newTADList_fused = getTADGenesTable(allBioMartHuman, monTADs_fused)
-geneTADAgeTable_fused = mergeGeneTADAge(newTADList_fused, geneAgeList)
-geneTADAgeTableAgeOnly_fused = subset(geneTADAgeTable_fused, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_fused = geneTADAgeTableAgeOnly_fused[!duplicated(geneTADAgeTableAgeOnly_fused[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_mon_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused, ageList, totRandomisations = 15)
-MLMatrix_14abr_mon_fused = fromFinalListToSgnTable(myFinalList_14abr_mon_fused)
-write.table(MLMatrix_14abr_mon_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_mon_fused.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_mon_fused.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-
-#######################
-#######################
-#######################
-####################### Bcell ZONE
-#######################
-#######################
-
-BcellTADs = read.table("/mnt/sexreg/temporal/geneage/GSE63525_GM12878_primary+replicate_Arrowhead_domainlist_sorted_noNested.txt", header = TRUE)
-
-library(ggplot2)
-library("biomaRt")
-ensembl75 = useMart(host='feb2014.archive.ensembl.org',
-						biomart='ENSEMBL_MART_ENSEMBL',
-						dataset='hsapiens_gene_ensembl')
-allBioMartHuman = getBM(mart = ensembl75, attributes = c("ensembl_gene_id", "wikigene_name", "chromosome_name", "start_position", "end_position", "gene_biotype"))
-
-thisFolder = "/mnt/sexreg/temporal/geneage/"
-sampleAgeFile = paste0(thisFolder, "AgesWithChrX.tsv") # converted from Caelinn's file in /data
-geneAgeList = as.data.frame(read.table(sampleAgeFile, header = TRUE, sep = "\t"))
-colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-geneAgeList = geneAgeList[,1:6]
-
-newTADList = getTADGenesTable(allBioMartHuman, BcellTADs)
-geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
-geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
-
-ageList = as.data.frame(read.table(header = TRUE, text = "
-age
-FungiMetazoa
-Bilateria
-Chordata
-Euteleostomi
-Sarcopterygii
-Tetrapoda
-Amniota
-Mammalia
-Theria
-Eutheria
-Simiiformes
-Catarrhini
-Hominoidea
-Hominidae
-HomoPanGorilla
-HomoSapiens
-"))
-
-
-####### final table, 14abr, Bcell, real
-myFinalList_14abr_Bcell_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups, ageList, totRandomisations = 15)
-MLMatrix_14abr_Bcell_real = fromFinalListToSgnTable(myFinalList_14abr_Bcell_real)
-write.table(MLMatrix_14abr_Bcell_real, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_Bcell_real.tsv", sep = "\t")
-
-MLMatrix_14abr_Bcell_NH = fromFinalListToSgnTable(myFinalList_14abr_Bcell_real, getHugeTADdataInstead = TRUE)
-write.table(MLMatrix_14abr_Bcell_NH, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_Bcell_NH.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_Bcell_real.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-ageNumbers = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups))
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_Bcell_NH.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, Bcell, iTR = inter TAD removed
-BcellTADs_iTR = interTADRemover(BcellTADs, chromosomes_hg19)
-newTADList_iTR = getTADGenesTable(allBioMartHuman, BcellTADs_iTR)
-geneTADAgeTable_iTR = mergeGeneTADAge(newTADList_iTR, geneAgeList)
-geneTADAgeTableAgeOnly_iTR = subset(geneTADAgeTable_iTR, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_iTR = geneTADAgeTableAgeOnly_iTR[!duplicated(geneTADAgeTableAgeOnly_iTR[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_Bcell_iTR = getAllPairData(geneTADAgeTableAgeOnlyNoDups_iTR, ageList, totRandomisations = 15)
-MLMatrix_14abr_Bcell_iTR = fromFinalListToSgnTable(myFinalList_14abr_Bcell_iTR)
-write.table(MLMatrix_14abr_Bcell_iTR, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_Bcell_iTR.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_Bcell_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-####### final table, 14abr, Bcell, fused = fused TADs
-BcellTADs_fused = fusedTAD(BcellTADs, chromosomes_hg19)
-newTADList_fused = getTADGenesTable(allBioMartHuman, BcellTADs_fused)
-geneTADAgeTable_fused = mergeGeneTADAge(newTADList_fused, geneAgeList)
-geneTADAgeTableAgeOnly_fused = subset(geneTADAgeTable_fused, gene_age != "No Age Provided")
-geneTADAgeTableAgeOnlyNoDups_fused = geneTADAgeTableAgeOnly_fused[!duplicated(geneTADAgeTableAgeOnly_fused[, "ensembl_gene_id"]),]
-
-myFinalList_14abr_Bcell_fused = getAllPairData(geneTADAgeTableAgeOnlyNoDups_fused, ageList, totRandomisations = 15)
-MLMatrix_14abr_Bcell_fused = fromFinalListToSgnTable(myFinalList_14abr_Bcell_fused)
-write.table(MLMatrix_14abr_Bcell_fused, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_14abr_Bcell_fused.tsv", sep = "\t")
-
-ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_fused)
-write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_Bcell_fused.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+####### final table, 05oct, mESC, rndAge
+myFinalList_05oct_mESC_rndAge = getAllPairData(geneTADAgeTableAgeOnlyNoDupsMouse_RodentsMerged_rndAge, ageListMouse, totRandomisations = 15)
+MLMatrix_05oct_mESC_rndAge = fromFinalListToSgnTable(myFinalList_05oct_mESC_rndAge)
+write.table(MLMatrix_05oct_mESC_rndAge, "/mnt/sexreg/temporal/geneage/minusLogPValueSgn_table_05oct_mESC_rndAge.tsv", sep = "\t")
