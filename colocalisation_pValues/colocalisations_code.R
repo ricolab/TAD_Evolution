@@ -1,7 +1,7 @@
 source("colocalisations_functions.R")
 library("biomaRt")
 
-runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable, analysisName, totRandomisations = 15, removePreChr = TRUE) {
+runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable, analysisName, totRandomisations = 15, removePreChr = TRUE, rndSeed = 0) {
 	ensemblDataset = "hsapiens_gene_ensembl"
 	if(species == "Mus_musculus") ensemblDataset = "mmusculus_gene_ensembl"
 
@@ -22,6 +22,7 @@ runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable,
 	if (species == "Mus_musculus") {
 		geneAgeList = as.data.frame(cbind(ensembl_gene_id = as.character(geneAgeList$GeneID), HUGO_symbol = NA, seqnames = NA, start = NA, end = NA, GeneAge = as.character(geneAgeList$GeneAge)))
 		}
+		
 	print(head(myTADs))
 	newTADList = getTADGenesTable(allBioMart, myTADs)
 	geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
@@ -31,7 +32,7 @@ runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable,
 	geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
 
 	geneTADAgeTableAgeOnlyNoDups_YoungMerged = replaceAges(geneTADAgeTableAgeOnlyNoDups, 11, replacementTable)
-	geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age")
+	geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age", seed = rndSeed)
 	
 
 	####### saving output
