@@ -1,7 +1,7 @@
 source("colocalisations_functions.R")
 library("biomaRt")
 
-runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable, analysisName, totRandomisations = 15, removePreChr = TRUE, rndSeed = 0) {
+runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable, analysisName, totRandomisations = 15, removePreChr = TRUE, rndSeed = 0, addRandomisation = TRUE, addObserved = TRUE) {
 	ensemblDataset = "hsapiens_gene_ensembl"
 	if(species == "Mus_musculus") ensemblDataset = "mmusculus_gene_ensembl"
 
@@ -32,27 +32,33 @@ runTADEvolution = function(species, TADFile, ageFile, ageList, replacementTable,
 	geneTADAgeTableAgeOnlyNoDups = geneTADAgeTableAgeOnly[!duplicated(geneTADAgeTableAgeOnly[, "ensembl_gene_id"]),]
 
 	geneTADAgeTableAgeOnlyNoDups_YoungMerged = replaceAges(geneTADAgeTableAgeOnlyNoDups, 11, replacementTable)
-	geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age", seed = rndSeed)
 	
 
 	####### saving output
-	myFinalList_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups_YoungMerged, ageList, totRandomisations = totRandomisations)
-	MLMatrix_real = fromFinalListToSgnTable(myFinalList_real)
-	write.table(MLMatrix_real, paste0("minusLogPValueSgn_table_", analysisName, "_real.tsv"), sep = "\t")
-
-	MLMatrix_NH = fromFinalListToSgnTable(myFinalList_real, getHugeTADdataInstead = TRUE)
-	write.table(MLMatrix_NH, paste0("minusLogPValueSgn_table_", analysisName, "_NH.tsv"), sep = "\t")
-
+	
 	ageNumbers_real = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_YoungMerged)
 	write.table(ageNumbers_real, paste0("ageNumbers_", analysisName, "_real.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
-
+	
 	ageNumbers_NH = ngeneInAge(ageList, makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups_YoungMerged))
 	write.table(ageNumbers_NH, paste0("ageNumbers_", analysisName, "_NH.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
 	
+	if(addObserved) {
+		myFinalList_real = getAllPairData(geneTADAgeTableAgeOnlyNoDups_YoungMerged, ageList, totRandomisations = totRandomisations)
+		MLMatrix_real = fromFinalListToSgnTable(myFinalList_real)
+		write.table(MLMatrix_real, paste0("minusLogPValueSgn_table_", analysisName, "_real.tsv"), sep = "\t")
+
+		MLMatrix_NH = fromFinalListToSgnTable(myFinalList_real, getHugeTADdataInstead = TRUE)
+		write.table(MLMatrix_NH, paste0("minusLogPValueSgn_table_", analysisName, "_NH.tsv"), sep = "\t")
+		}
+	
 	# rndAge part, scrambling age labels
-	myFinalList_rndAge = getAllPairData(geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge, ageList, totRandomisations = totRandomisations)
-	MLMatrix_rndAge = fromFinalListToSgnTable(myFinalList_rndAge)
-	write.table(MLMatrix_rndAge, paste0("minusLogPValueSgn_table_", analysisName, "_rndAge.tsv"), sep = "\t")
+	
+	if(addRandomisation) {
+		geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age", seed = rndSeed)
+		myFinalList_rndAge = getAllPairData(geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge, ageList, totRandomisations = totRandomisations)
+		MLMatrix_rndAge = fromFinalListToSgnTable(myFinalList_rndAge)
+		write.table(MLMatrix_rndAge, paste0("minusLogPValueSgn_table_", analysisName, "_rndAge.tsv"), sep = "\t")
+		}
 	
 	}
 
@@ -119,4 +125,54 @@ runTADEvolution(
 			replacementTable = replacementTableHuman,
 			analysisName = "neut",
 			removePreChr = FALSE
+			)
+
+#
+#
+# some more randomisations for mESC and hESC
+
+runTADEvolution(
+			species = "Mus_musculus",
+			TADFile = "mESCTADs.tsv",
+			ageFile = "MiceAges_MTH.tsv", # from Caelinn's email of 16mar-2020, file "MiceAges.txt", changing only Fungi-Metazoa_group to FungiMetazoa
+			ageList = ageListMouse,
+			replacementTable = replacementTableMouse_GliresRodentia,
+			analysisName = "mESC_seed1",
+			addObserved = FALSE,
+			rndSeed = 1
+			)
+			
+# hESC merging Primates
+runTADEvolution(
+			species = "Homo_sapiens",
+			TADFile = "hESCTADs.tsv",
+			ageFile = "AgesWithChrX.tsv", # converted from Caelinn's file in /data
+			ageList = ageListHuman,
+			replacementTable = replacementTableHuman,
+			analysisName = "hESC_seed1",
+			addObserved = FALSE,
+			rndSeed = 1
+			)
+
+runTADEvolution(
+			species = "Mus_musculus",
+			TADFile = "mESCTADs.tsv",
+			ageFile = "MiceAges_MTH.tsv", # from Caelinn's email of 16mar-2020, file "MiceAges.txt", changing only Fungi-Metazoa_group to FungiMetazoa
+			ageList = ageListMouse,
+			replacementTable = replacementTableMouse_GliresRodentia,
+			analysisName = "mESC_seed2",
+			addObserved = FALSE,
+			rndSeed = 2
+			)
+			
+# hESC merging Primates
+runTADEvolution(
+			species = "Homo_sapiens",
+			TADFile = "hESCTADs.tsv",
+			ageFile = "AgesWithChrX.tsv", # converted from Caelinn's file in /data
+			ageList = ageListHuman,
+			replacementTable = replacementTableHuman,
+			analysisName = "hESC_seed2",
+			addObserved = FALSE,
+			rndSeed = 2
 			)
