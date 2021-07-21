@@ -195,11 +195,11 @@ define.tad.ages <- function(species){
   
   save(TADAges,file=paste0(path,"/",species,"TADAges.rData"))
   
-  TADs <- merge(TADs,Essentiality[,c("locus","essential")],by.x="GeneID",by.y="locus")
-  
   save(TADs,file=paste0(path,"/",species,"TADGenes.rData"))
   
-  Split <- TADAges[which(TADAges$Age == "Split"),]
+  TADs <- merge(TADs,Essentiality[,c("locus","essential")],by.x="GeneID",by.y="locus")
+  
+    Split <- TADAges[which(TADAges$Age == "Split"),]
   Old <- TADAges[which(TADAges$Age == "Old"),]
   Young <- TADAges[which(TADAges$Age == "Young"),]
   Mid <- TADAges[which(TADAges$Age == "Mid"),]
