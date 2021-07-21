@@ -571,7 +571,29 @@ ngeneInAge = function(myAgeList, myGeneTADAgeTable) {
 	return(outputDF)
 	}
 
-
+generateRegularTADList = function(chromosomes, size = 500000) {
+	
+	finalList = data.frame()
+	for (i in 1:nrow(chromosomes)) {
+		chrom = chromosomes[i, "chrom"]
+		chromEnd = as.numeric(chromosomes[i, "end"])
+		chromRows = ceiling(chromEnd / size)
+		chromTotal = data.frame(chr = rep(chrom, chromRows),
+								start = (0:(chromRows - 1)) * size,
+								end = (1:chromRows) * size - 1)
+		if (chromTotal[chromRows,"end"] > chromEnd) chromTotal[chromRows,"end"] = chromEnd
+		finalList = rbind(finalList, chromTotal)
+		}
+	
+	rownames(finalList) = NULL
+	finalList$chr = as.character(unlist(finalList$chr))
+	finalList$start = format(as.numeric(as.character(unlist(finalList$start))), scientific = FALSE)
+	finalList$end = format(as.numeric(as.character(unlist(finalList$end))), scientific = FALSE)
+	
+	return(finalList)
+	
+	}
+	
 
 ################################################ functions for essentiality
 
@@ -648,38 +670,6 @@ tableReducer = function(myGeneTADAgeTable, ageNumbersFile, seed = 0) {
 	return(resultingGeneTAGAgeTable)
 	
 	}
-
-# tablaPrueba = tableReducer(geneTADAgeTableAgeOnlyNoDups, "/mnt/sexreg/temporal/geneage/ageNumbers_human_prueba.tsv")
-
-
-
-
-# ageNumbers = ngeneInAge(ageList, geneTADAgeTableAgeOnlyNoDups_iTR)
-# View(ageNumbers)
-# hacer myFinalList tab y ver que hay
-# write.table(ageNumbers, "/mnt/sexreg/temporal/geneage/ageNumbers_14abr_hESC_iTR.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-
-
-# print(myPlot)
-
-# theseData = getPairData(geneTADAgeTableAgeOnlyNoDups, age1, age2, totRandomisations = 10)
-
-	
-# probList = getColocalisationProbability(geneTADAgeTableAgeOnlyNoDups, "FungiMetazoa", "Bilateria")
-# probList = getColocalisationProbability(makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups), "FungiMetazoa", "Bilateria")
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), "FungiMetazoa", "Bilateria")
-# 
-# age1 = "Theria"
-# age2 = "Bilateria"
-# probList = getColocalisationProbability(geneTADAgeTableAgeOnlyNoDups, age1, age2)
-# probList = getColocalisationProbability(makeAllOneHugeTAD(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# probList = getColocalisationProbability(randomiseAllAges(geneTADAgeTableAgeOnlyNoDups), age1, age2)
-# 
-# getPairData(geneTADAgeTableAgeOnlyNoDups, age1, age2, totRandomisations = 10)
 
 ################################################
 
