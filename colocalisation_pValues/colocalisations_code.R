@@ -1,4 +1,4 @@
-setwd("/home/marco/Dropbox/labejo/taskoj/2021/2021-07-19 TAD evol con muchas ventanas regulares/")
+# setwd("/pasteHereYourDirectory/")
 source("colocalisations_functions.R")
 library("biomaRt")
 
@@ -59,7 +59,7 @@ runTADEvolution = function(species,
 		geneAgeList = as.data.frame(cbind(ensembl_gene_id = as.character(geneAgeList$GeneID), HUGO_symbol = NA, seqnames = NA, start = NA, end = NA, GeneAge = as.character(geneAgeList$GeneAge)))
 		}
 	
-	print(head(myRegions)
+	print(head(myRegions))
 	newTADList = getTADGenesTable(allBioMart, myRegions)
 	geneTADAgeTable = mergeGeneTADAge(newTADList, geneAgeList)
 	geneTADAgeTableAgeOnly = subset(geneTADAgeTable, gene_age != "No Age Provided")
