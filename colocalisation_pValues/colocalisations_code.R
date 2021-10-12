@@ -88,7 +88,7 @@ runTADEvolution = function(species,
 	
 	# rndAge part, scrambling age labels
 	if(addRandomisation) {
-		geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges2(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age", seed = rndSeed)
+		geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge = randomiseAllAges(geneTADAgeTableAgeOnlyNoDups_YoungMerged, "gene_age", seed = rndSeed)
 		myFinalList_rndAge = getAllPairData(geneTADAgeTableAgeOnlyNoDups_YoungMerged_rndAge, ageList, totRandomisations = totRandomisations)
 		MLMatrix_rndAge = fromFinalListToSgnTable(myFinalList_rndAge)
 		write.table(MLMatrix_rndAge, paste0("minusLogPValueSgn_table_", analysisName, "_rndAge.tsv"), sep = "\t")

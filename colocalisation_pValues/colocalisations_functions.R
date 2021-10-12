@@ -1,5 +1,5 @@
 # added on 16nov-2020 to include rndAge
-randomiseAllAges2 = function(myTable, ageColumn, seed = 0) {
+randomiseAllAges = function(myTable, ageColumn, seed = 0) {
 	set.seed(seed) # comment this if you don't want a deterministic random distribution
 	newTable = myTable
 	myAges = as.character(myTable[, ageColumn])
@@ -7,18 +7,6 @@ randomiseAllAges2 = function(myTable, ageColumn, seed = 0) {
 	colnames(scramblingTable) = c(ageColumn, "rnd")
 	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
 	newTable[, ageColumn] = scramblingTable[, ageColumn]
-	
-	return(newTable)
-	}
-
-randomiseAllAges = function(myTable, seed = 0) {
-	# set.seed(seed) # uncomment this if you do want a deterministic random distribution
-	newTable = myTable
-	myAges = as.character(myTable$gene_age)
-	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
-	colnames(scramblingTable) = c("gene_age", "rnd")
-	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
-	newTable$gene_age = scramblingTable$gene_age
 	
 	return(newTable)
 	}
@@ -400,7 +388,7 @@ getPairData = function(TADTable, age1 = "", age2 = "", totRandomisations = 30, v
 		randomProbabilityList = c()
 		for (i in 1:totRandomisations) {
 			print (paste0("Calculating randomisation #", i, "/", totRandomisations, "."))
-			randomProbability = getColocalisationProbability(randomiseAllAges(TADTable), age1, age2, verbose = verbose)
+			randomProbability = getColocalisationProbability(randomiseAllAges(TADTable, "gene_age"), age1, age2, verbose = verbose)
 			randomProbabilityList = c(randomProbabilityList, randomProbability)
 			}
 		randomProbabilityList = sort(randomProbabilityList, na.last = TRUE)
