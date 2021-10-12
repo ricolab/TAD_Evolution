@@ -571,7 +571,7 @@ ngeneInAge = function(myAgeList, myGeneTADAgeTable) {
 	return(outputDF)
 	}
 
-generateRegularTADList = function(chromosomes, size = 500000) {
+generateRegularTADList = function(chromosomes, size = 500000, includeLast = TRUE) {
 	
 	finalList = data.frame()
 	for (i in 1:nrow(chromosomes)) {
@@ -581,7 +581,10 @@ generateRegularTADList = function(chromosomes, size = 500000) {
 		chromTotal = data.frame(chr = rep(chrom, chromRows),
 								start = (0:(chromRows - 1)) * size,
 								end = (1:chromRows) * size - 1)
-		if (chromTotal[chromRows,"end"] > chromEnd) chromTotal[chromRows,"end"] = chromEnd
+		if (chromTotal[chromRows,"end"] > chromEnd) {
+			if (includeLast) chromTotal[chromRows,"end"] = chromEnd
+			else chromTotal = head(chromTotal, -1)
+			}
 		finalList = rbind(finalList, chromTotal)
 		}
 	

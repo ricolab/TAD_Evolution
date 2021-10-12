@@ -15,7 +15,8 @@ runTADEvolution = function(species,
 							removePreChr = TRUE,
 							rndSeed = 0,
 							addRandomisation = TRUE,
-							addObserved = TRUE) {
+							addObserved = TRUE,
+							includeLast = TRUE) {
 	
 	ensemblDataset = "hsapiens_gene_ensembl"
 	if(species == "Mus_musculus") ensemblDataset = "mmusculus_gene_ensembl"
@@ -34,7 +35,7 @@ runTADEvolution = function(species,
 			print("Please, include a windowSize >= 1000 when using analysisType == 'TAD'.")
 			stop("runTADEvolution stopped.")
 			}
-		myRegions = generateRegularTADList(chromosomeTable, size = windowSize)
+		myRegions = generateRegularTADList(chromosomeTable, size = windowSize, includeLast = includeLast)
 		}
 
 	if (analysisType != "tad" & analysisType != "windows") {
