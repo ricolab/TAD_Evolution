@@ -1,14 +1,41 @@
 # added on 16nov-2020 to include rndAge
-randomiseAllAges = function(myTable, ageColumn, seed = 0) {
-	set.seed(seed) # comment this if you don't want a deterministic random distribution
+randomiseAllAges = function(myTable, ageColumn = "gene_age", chrColumn = "gene_chr", seed = -1, randomisationType = "full") {
+
+	# randomisationType can be
+	#	"full" (default, scrambling the whole table, keeping the age frequencies)
+	#	"chr" (scrambling within each chromosome, keeping  the age frequencies within each chromosome)
+	# Warning! myTable should be sorted in advance by {gene_chr, gene_start, gene_end} to make it work in chr mode.
+	
+	# use seed != -1 if you don't want a deterministic random distribution
+	if (seed != -1) set.seed(seed)
 	newTable = myTable
 	myAges = as.character(myTable[, ageColumn])
-	scramblingTable = as.data.frame(cbind(myAges, runif(length(myAges))))
-	colnames(scramblingTable) = c(ageColumn, "rnd")
-	scramblingTable = scramblingTable[order(scramblingTable$rnd),]
+	myChrs = as.character(myTable[, chrColumn])
+	scramblingTable = as.data.frame(cbind(myChrs, myAges, runif(length(myAges))))
+	colnames(scramblingTable) = c(chrColumn, ageColumn, "rnd")
+	
+	if (randomisationType == "full") scramblingTable = scramblingTable[order(scramblingTable$rnd),]
+	if (randomisationType == "chr") scramblingTable = scramblingTable[order(scramblingTable[, chrColumn], scramblingTable$rnd),]
+	
 	newTable[, ageColumn] = scramblingTable[, ageColumn]
 	
 	return(newTable)
+	}
+	
+saveRandomFiles = function(ageFile, amount = 30) {
+	totRandomisations = amount
+	geneAgeList = as.data.frame(read.table(ageFile, header = TRUE, sep = "\t"))
+	geneAgeList = geneAgeList[order(geneAgeList[,"seqnames"], geneAgeList[,"start"], geneAgeList[,"end"]),]
+
+	colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
+	geneAgeList = geneAgeList[,1:6]
+		
+	for (n in 1:totRandomisations) {
+		randTable = randomiseAllAges(geneAgeList, ageColumn = "GeneAge", chrColumn = "seqnames", seed = n, randomisationType = "chr")
+		newFileName = paste0(ageFile, "_rnd", sprintf("%02d",n), "tsv")
+		colnames(randTable) = c("ensembl_gene_id", "HUGO_symbol", "chr", "start", "end", "GeneAge")
+		write.table(randTable, newFileName, row.names = FALSE, quote = FALSE)
+		}
 	}
 
 # Primates = Simiiformes + Catarrhini + Hominoidea + Hominidae + HomoPanGorilla + HomoSapiens
@@ -367,7 +394,7 @@ makeAllOneHugeTAD = function(myTable, hugeTADName = "hugeTAD") {
 	}
 	
 
-getPairData = function(TADTable, age1 = "", age2 = "", totRandomisations = 30, verbose = FALSE, showGraph = FALSE) {
+getPairData = function(TADTable, age1 = "", age2 = "", totRandomisations = 30, verbose = FALSE, showGraph = FALSE, randomisationType = "full") {
 	maxSgnMinusLofPValue = 30
 	
 	if(nchar(age1) == 0 | nchar(age2) == 0) stop("Please don't leage age1 or age2 empty.")
@@ -388,7 +415,7 @@ getPairData = function(TADTable, age1 = "", age2 = "", totRandomisations = 30, v
 		randomProbabilityList = c()
 		for (i in 1:totRandomisations) {
 			print (paste0("Calculating randomisation #", i, "/", totRandomisations, "."))
-			randomProbability = getColocalisationProbability(randomiseAllAges(TADTable, "gene_age"), age1, age2, verbose = verbose)
+			randomProbability = getColocalisationProbability(randomiseAllAges(TADTable, "gene_age", randomisationType = randomisationType), age1, age2, verbose = verbose)
 			randomProbabilityList = c(randomProbabilityList, randomProbability)
 			}
 		randomProbabilityList = sort(randomProbabilityList, na.last = TRUE)
@@ -465,11 +492,11 @@ showBoxPlot = function(dataTable) {
 	
 	}
 
-getManyPairData = function(TADTable, specificAge, ageList, totRandomisations = 30, verbose = FALSE, showGraph = FALSE) {
+getManyPairData = function(TADTable, specificAge, ageList, totRandomisations = 30, verbose = FALSE, showGraph = FALSE, randomisationType = "full") {
 	finalTable = data.frame()
 	for(i in 1:nrow(ageList)) {
 		thisAge = as.character(ageList[i,])
-		colAge = getPairData(TADTable, specificAge, as.character(thisAge), totRandomisations = totRandomisations, verbose = verbose)
+		colAge = getPairData(TADTable, specificAge, as.character(thisAge), totRandomisations = totRandomisations, verbose = verbose, randomisationType = randomisationType)
 		if(nrow(finalTable) == 0) finalTable = colAge
 		else finalTable = cbind(finalTable, colAge)
 		}
@@ -480,7 +507,7 @@ getManyPairData = function(TADTable, specificAge, ageList, totRandomisations = 3
 	
 	}
 	
-getAllPairData = function(TADTable, ageList, totRandomisations = 30, verbose = FALSE, showGraph = FALSE) {
+getAllPairData = function(TADTable, ageList, totRandomisations = 30, verbose = FALSE, showGraph = FALSE, randomisationType = "full") {
 	
 	resultingList = list()
 	
@@ -488,7 +515,7 @@ getAllPairData = function(TADTable, ageList, totRandomisations = 30, verbose = F
 		thisAge = as.character(ageList[i,])
 		print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 		print(paste0("++++++++++++++++++++ Starting with interactions for: ", thisAge, " ++++++++++++++++++++"))
-		dfAge = getManyPairData(TADTable, thisAge, ageList, totRandomisations = totRandomisations, verbose = verbose, showGraph = showGraph)
+		dfAge = getManyPairData(TADTable, thisAge, ageList, totRandomisations = totRandomisations, verbose = verbose, showGraph = showGraph, randomisationType = randomisationType)
 		resultingList[[i]] = dfAge
 		}
 		
