@@ -22,18 +22,17 @@ randomiseAllAges = function(myTable, ageColumn = "gene_age", chrColumn = "gene_c
 	return(newTable)
 	}
 	
-saveRandomFiles = function(ageFile, amount = 30) {
+saveRandomFiles = function(ageFile, amount = 30, ageColumn = "gene_age", chrColumn = "gene_chr", startColumn = "start", endColumn = "end", idColumn = "ensembl_gene_id") {
 	totRandomisations = amount
-	geneAgeList = as.data.frame(read.table(ageFile, header = TRUE, sep = "\t"))
-	geneAgeList = geneAgeList[order(geneAgeList[,"seqnames"], geneAgeList[,"start"], geneAgeList[,"end"]),]
-
-	colnames(geneAgeList) = c("ensembl_gene_id", colnames(geneAgeList)[2:6])
-	geneAgeList = geneAgeList[,1:6]
+	geneAgeList = as.data.frame(read.table("MiceAges_MTH_withCoord.tsv", header = TRUE, sep = "\t"))
+	geneAgeList = geneAgeList[c(idColumn, chrColumn, startColumn, endColumn, ageColumn)]
+	geneAgeList = geneAgeList[order(geneAgeList[, chrColumn], geneAgeList[, startColumn], geneAgeList[, endColumn]),]
+	colnames(geneAgeList) = c(idColumn, chrColumn, startColumn, endColumn, ageColumn)
 		
 	for (n in 1:totRandomisations) {
-		randTable = randomiseAllAges(geneAgeList, ageColumn = "GeneAge", chrColumn = "seqnames", seed = n, randomisationType = "chr")
+		randTable = randomiseAllAges(geneAgeList, ageColumn = ageColumn, chrColumn = chrColumn, seed = n, randomisationType = "chr")
 		newFileName = paste0(ageFile, "_rnd", sprintf("%02d",n), "tsv")
-		colnames(randTable) = c("ensembl_gene_id", "HUGO_symbol", "chr", "start", "end", "GeneAge")
+		colnames(randTable) = c(idColumn, chrColumn, startColumn, endColumn, ageColumn)
 		write.table(randTable, newFileName, row.names = FALSE, quote = FALSE)
 		}
 	}
