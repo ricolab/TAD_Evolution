@@ -21,21 +21,6 @@ randomiseAllAges = function(myTable, ageColumn = "gene_age", chrColumn = "gene_c
 	
 	return(newTable)
 	}
-	
-saveRandomFiles = function(ageFile, amount = 30, ageColumn = "gene_age", chrColumn = "gene_chr", startColumn = "start", endColumn = "end", idColumn = "ensembl_gene_id") {
-	totRandomisations = amount
-	geneAgeList = as.data.frame(read.table("MiceAges_MTH_withCoord.tsv", header = TRUE, sep = "\t"))
-	geneAgeList = geneAgeList[c(idColumn, chrColumn, startColumn, endColumn, ageColumn)]
-	geneAgeList = geneAgeList[order(geneAgeList[, chrColumn], geneAgeList[, startColumn], geneAgeList[, endColumn]),]
-	colnames(geneAgeList) = c(idColumn, chrColumn, startColumn, endColumn, ageColumn)
-		
-	for (n in 1:totRandomisations) {
-		randTable = randomiseAllAges(geneAgeList, ageColumn = ageColumn, chrColumn = chrColumn, seed = n, randomisationType = "chr")
-		newFileName = paste0(ageFile, "_rnd", sprintf("%02d",n), "tsv")
-		colnames(randTable) = c(idColumn, chrColumn, startColumn, endColumn, ageColumn)
-		write.table(randTable, newFileName, row.names = FALSE, quote = FALSE)
-		}
-	}
 
 # Primates = Simiiformes + Catarrhini + Hominoidea + Hominidae + HomoPanGorilla + HomoSapiens
 # Eutheria = Eutheria + Glires
@@ -123,7 +108,7 @@ getTADGenesTable = function(myGenes, myTADs) {
 			}
 		}
 		
-		for (j in 0:max(geneDistribution)) print(paste0("There are ", sum(geneDistribution == j), " genes present in exactly ", j, " TADs (", round(sum(geneDistribution == j) / length(geneDistribution) * 100, 2), "%)."))
+		for (j in 0:max(geneDistribution)) print(paste0("There are ", sum(geneDistribution == j), " genes present in exactly ", j, " regions (", round(sum(geneDistribution == j) / length(geneDistribution) * 100, 2), "%)."))
 		
 		colnames(TADGenesTable) = c("ensembl_gene_id", "wikigene_name", "gene_chr", "gene_start", "gene_end", "gene_biotype", "tad_chr", "tad_start", "tad_end", "tad_id")
 		
@@ -318,6 +303,8 @@ fusedTAD = function(myTADs, myChromosomes) {
 # forked from version of 12dic-2019
 # note: this algorithm removes the interTAD regions
 	
+	includeChrPrefix = grepl("chr", myTADs[1, "chr"])
+	
 	# indices for myChromosomes
 	CHROMINDEX = 1
 	CENTROMEREINDEX = 2
@@ -334,10 +321,15 @@ fusedTAD = function(myTADs, myChromosomes) {
 	newTADs = vector()
 	for (chromNum in 1:length(chromList)) {
 		thisChrom = chromList[chromNum]
-		thisChromNoPrefix = substr(thisChrom, 4, 5)
+		if (includeChrPrefix) thisChromNoPrefix = substr(thisChrom, 4, 5)
+		else thisChromNoPrefix = thisChrom
 		
 		print(paste0("Working on ", thisChrom, "..."))
-		TADsubset = as.data.frame(subset(myTADs, paste0("chr", chr) == thisChrom))
+		
+		# quick fix 21jan-2022 to incclude both chr formats: not only "1" but also "chr1"
+		if (includeChrPrefix) TADsubset = as.data.frame(subset(myTADs, chr == thisChrom))
+		else TADsubset = as.data.frame(subset(myTADs, paste0("chr", chr) == thisChrom))
+		
 		if (nrow(TADsubset) > 0) {
 		
 			startingPoint = 0
@@ -380,6 +372,8 @@ fusedTAD = function(myTADs, myChromosomes) {
 	newTADs$end = as.numeric(as.character(newTADs$end))
 	newTADs$TAD = as.character(as.character(newTADs$TAD))
 	newTADs$length = as.numeric(as.character(newTADs$length))
+	if (includeChrPrefix) newTADs$chr = paste0("chr", newTADs$chr)
+	
 	return(newTADs)
 	
 	}
