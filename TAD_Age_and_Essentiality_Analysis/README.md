@@ -1,4 +1,5 @@
 Script runs on R 4.0.2
+
 Steps to use:
 1) Download input files (HuamnAges_v75 abd TADs.bed for human, MiceAges and mESC_TADs for mouse, gene_essentiality for both) - data is located in "data" repository 
 2) Set "path" variable to directory with input files
