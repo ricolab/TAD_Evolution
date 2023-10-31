@@ -1,5 +1,5 @@
 # TAD_Evolution/colocalisation_pValues
-Repository containing code written by Marco Trevisan-Herraz in 2020-2021 to analyse the evidence of the colocalisation of gene ages in pre-defined genomic regions (such as TADs). Code tested in R 3.4.4
+Repository containing code written by Marco Trevisan-Herraz to analyse the evidence of the colocalisation of gene ages in pre-defined genomic regions (such as TADs). Code tested in R 3.4.4 and R 4.0.2.
 
 Steps to process the data:
 
