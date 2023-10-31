@@ -1,5 +1,5 @@
 The insulation of TADs in GM12878 cells was calculated by averaging the two insulation scores of their boundaries, as calculated by Gong and co-workers (https://pubmed.ncbi.nlm.nih.gov/29416042/). 
-Then, TADs were grouped into five groups of similar size based on their TAD insulation scores, from low to high insulation. 
+Then, TADs were grouped into five groups of similar size based on their TAD insulation scores, from low to high insulation (provided as bed files, where 1 corresponds to the lowest strenggth and 5 to the maximum). 
 The original TAD boundary insulation scores were kindly provided by Aristotelis Tsirigos and are provided here as a compressed file with his permission.
 For each sample they used in the paper, there is a separate folder. Within each folder you will see 5 separate bed files corresponding the 5 boundary strength categories they defined in the original paper (https://pubmed.ncbi.nlm.nih.gov/29416042/). Any question about the original data should be addressed to:
 
