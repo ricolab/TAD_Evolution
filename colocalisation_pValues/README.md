@@ -29,4 +29,5 @@ Steps to process the data:
 
 
 Note 1: if you want to use your own genomic regions or your own gene ages, you will neet to change those filenames when calling runTADEvolution (the only function within colocalisations_code.R).
+
 Note 2: the randomisation is set using the runif function. In order to get random but reproducible (deterministic) data, the default seed 0 is used in function randomiseAllAges2. If you want to change this, change the seed by calling the function runTADEvolution with an alternative seed using the rndSeed wariable.
